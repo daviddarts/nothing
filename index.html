@@ -12,9 +12,10 @@
 
   <style>
     :root {
-      /* tweak these timings to taste (ms) */
+      /* timings in ms */
       --fade-ms: 800;
       --hold-ms: 1200;
+      --hold-last-ms: 3200; /* longer pause on the last line */
       --gap-ms: 200;
     }
 
@@ -105,23 +106,24 @@
 
     const el = document.getElementById('line');
 
-    // Timings (ms) — match CSS vars above
-    const fade = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-ms')) || 800;
-    const hold = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hold-ms')) || 1200;
-    const gap  = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gap-ms'))  || 200;
+    // Read timings from CSS vars
+    const css = getComputedStyle(document.documentElement);
+    const fade = parseInt(css.getPropertyValue('--fade-ms')) || 800;
+    const hold = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
+    const holdLast = parseInt(css.getPropertyValue('--hold-last-ms')) || (hold * 3);
+    const gap  = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
 
     let i = 0;
 
     function cycle() {
-      // set text
       el.textContent = lines[i];
-
-      // ensure we start hidden before fading in
       el.style.opacity = '0';
 
-      // next frame -> fade in
       requestAnimationFrame(() => {
         el.style.opacity = '1';
+
+        const isLast = i === lines.length - 1;
+        const thisHold = isLast ? holdLast : hold;
 
         // after fade-in + hold, fade out
         setTimeout(() => {
@@ -132,11 +134,11 @@
             i = (i + 1) % lines.length;
             cycle();
           }, fade + gap);
-        }, fade + hold);
+        }, fade + thisHold);
       });
     }
 
-    // Respect reduced motion: just show first line
+    // reduced motion: show first line only
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       el.textContent = lines[0];
