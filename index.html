@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NOTHING</title>
 
-  <!-- Favicon: white box with black outline -->
-  <link rel="icon" type="image/svg+xml"
-        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='8' width='48' height='48' fill='%23fff' stroke='%23000' stroke-width='4'/%3E%3C/svg%3E">
-
   <!-- Speed up Google Fonts + load Roboto -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -59,6 +55,7 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
+    // --- Poem logic ---
     const lines = [
       `Nothing.`,
       `Nothing to see here.`,
@@ -110,7 +107,6 @@
 
     const el = document.getElementById('line');
 
-    // Read timings from CSS vars
     const css = getComputedStyle(document.documentElement);
     const fade = parseInt(css.getPropertyValue('--fade-ms')) || 800;
     const hold = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
@@ -129,11 +125,8 @@
         const isLast = i === lines.length - 1;
         const thisHold = isLast ? holdLast : hold;
 
-        // after fade-in + hold, fade out
         setTimeout(() => {
           el.style.opacity = '0';
-
-          // after fade-out + gap, advance
           setTimeout(() => {
             i = (i + 1) % lines.length;
             cycle();
@@ -142,7 +135,6 @@
       });
     }
 
-    // reduced motion: show first line only
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       el.textContent = lines[0];
@@ -150,6 +142,23 @@
     } else {
       cycle();
     }
+
+    // --- Favicon: force refresh each load (white box with black outline) ---
+    (function setFavicon() {
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+           <rect x="8" y="8" width="48" height="48" fill="#fff" stroke="#000" stroke-width="4" rx="6" ry="6"/>
+         </svg>`;
+      const href = "data:image/svg+xml," + encodeURIComponent(svg) + "#v=" + Date.now();
+
+      // Remove any existing icons, then add a fresh one to bust cache
+      document.querySelectorAll('link[rel="icon"]').forEach(n => n.remove());
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/svg+xml';
+      link.href = href;
+      document.head.appendChild(link);
+    })();
   </script>
 </body>
 </html>
