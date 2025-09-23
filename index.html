@@ -1,31 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NOTHING</title>
-  <!-- Load Roboto font -->
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
+
+  <!-- Speed up Google Fonts + load Roboto -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet" />
+
   <style>
-    body {
-      background: white;
-      height: 100vh;
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: 'Roboto', sans-serif;
-      font-size: 4em;        /* adjust size here */
-      font-weight: 900;      /* 900 = black (heaviest) */
-      color: black;
-      animation: fadeOut 5s ease-in forwards;
+    :root {
+      /* tweak these timings to taste (ms) */
+      --fade-ms: 800;
+      --hold-ms: 1200;
+      --gap-ms: 200;
     }
-    @keyframes fadeOut {
-      0%   { color: black; }
-      100% { color: white; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: white;
+      color: black;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #line {
+      font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
+      font-weight: 900;
+      font-size: clamp(28px, 8vw, 64px);
+      line-height: 1.15;
+      text-align: center;
+      max-width: min(90vw, 1200px);
+      opacity: 0;
+      transition: opacity calc(var(--fade-ms) * 1ms) ease-in-out;
+      will-change: opacity;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #line { transition: none; opacity: 1; }
     }
   </style>
 </head>
 <body>
-  Nothing
+  <div id="line" aria-live="polite"></div>
+
+  <script>
+    const lines = [
+      `Nothing.`,
+      `Nothing to see here.`,
+      `I’ve got nothing.`,
+      `Less than nothing.`,
+      `A whole lotta nothing.`,
+      `A big fat nothingburger.`,
+      `This is nothing new.`,
+      `Nothing special.`,
+      `Nothing to say.`,
+      `Nothing to do.`,
+      `Nothing to wear.`,
+      `Nothing to lose.`,
+      `Next to nothing.`,
+      `Nothing to write home about.`,
+      `Nothing to sneeze at.`,
+      `Think nothing of it.`,
+      `Nothing ventured, nothing gained.`,
+      `Nothing to it.`,
+      `Sweet nothing.`,
+      `Nothing compares.`,
+      `Nothing but the best.`,
+      `Double or nothing.`,
+      `Nothing can stop us.`,
+      `Nothing can come between us.`,
+      `Stop at nothing.`,
+      `All or nothing.`,
+      `You have nothing to fear.`,
+      `I’ve got nothing to gain.`,
+      `Nothing to prove.`,
+      `Nothing to declare.`,
+      `Nothing to hide.`,
+      `I’ve done nothing to regret.`,
+      `Say nothing.`,
+      `Nothing ever goes as planned.`,
+      `Nothing good happens after 2AM.`,
+      `Nothing but trouble.`,
+      `There’s nothing between us.`,
+      `Is nothing sacred?`,
+      `Don’t expect something for nothing.`,
+      `Nothing is free.`,
+      `Nothing lasts forever.`,
+      `Nothing personal.`,
+      `Good-for-nothing.`,
+      `You are nothing to me.`,
+      `I’ve got nothing left.`,
+      `Thanks for nothing.`
+    ];
+
+    const el = document.getElementById('line');
+
+    // Timings (ms) — match CSS vars above
+    const fade = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-ms')) || 800;
+    const hold = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hold-ms')) || 1200;
+    const gap  = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--gap-ms'))  || 200;
+
+    let i = 0;
+
+    function cycle() {
+      // set text
+      el.textContent = lines[i];
+
+      // ensure we start hidden before fading in
+      el.style.opacity = '0';
+
+      // next frame -> fade in
+      requestAnimationFrame(() => {
+        el.style.opacity = '1';
+
+        // after fade-in + hold, fade out
+        setTimeout(() => {
+          el.style.opacity = '0';
+
+          // after fade-out + gap, advance
+          setTimeout(() => {
+            i = (i + 1) % lines.length;
+            cycle();
+          }, fade + gap);
+        }, fade + hold);
+      });
+    }
+
+    // Respect reduced motion: just show first line
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      el.textContent = lines[0];
+      el.style.opacity = '1';
+    } else {
+      cycle();
+    }
+  </script>
 </body>
 </html>
