@@ -13,8 +13,8 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-in-ms: 3000;            /* slower fade-in for ALL lines */
-      --fade-out-ms: 800;            /* base fade-out */
+      --fade-in-ms: 3000;            /* slower, true fade-in for ALL lines */
+      --fade-out-ms: 800;            /* fade-out base */
       --hold-ms: 1200;
       --gap-ms: 200;
 
@@ -54,9 +54,8 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-      opacity: 0; /* will animate 0 -> 1 on every line */
-      color: #000; /* fade is via opacity now */
-      will-change: opacity;
+      color: #000;  /* the fade-in is via opacity */
+      opacity: 0;   /* each line starts at 0, WAAPI animates to 1 */
     }
 
     /* Token spans so we can fade parts independently on fade-out */
@@ -80,7 +79,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #line, .token { transition: none; opacity: 1; }
+      #line, .token { transition: none !important; opacity: 1 !important; }
     }
   </style>
 </head>
@@ -195,17 +194,17 @@
 
     // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 3000;
-    const fadeOutBase = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
-    const holdBase    = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
-    const gap         = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
+    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 3000;
+    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
+    const holdBase  = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
+    const gap       = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
 
     const firstHoldMult    = parseFloat(css.getPropertyValue('--first-hold-mult'))     || 2;
     const firstFadeOutMult = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
 
-    const thanksHold        = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
-    const linkHold          = parseInt(css.getPropertyValue('--link-hold-ms'))          || 10000;
-    const nothingExtraHold  = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
+    const thanksHold       = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
+    const linkHold         = parseInt(css.getPropertyValue('--link-hold-ms'))          || 10000;
+    const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
 
     // Regex for tokenizing vs detection
     const NOTHING_SPLIT = /(nothing)s?/gi; // tokenize "nothing"/"nothings"
@@ -238,12 +237,18 @@
     function lineHasNothing(item) {
       if (isLinkItem(item)) return false;
       const text = isObj(item) ? item.text : String(item);
-      return NOTHING_TEST.test(text); // non-global, non-stateful
+      return NOTHING_TEST.test(text);
+    }
+
+    // Simple helper to run a one-off WAAPI animation and await its end
+    function animateOnce(el, keyframes, options) {
+      const anim = el.animate(keyframes, options);
+      return new Promise(resolve => anim.addEventListener('finish', resolve, { once: true }));
     }
 
     let i = 0;
 
-    function cycle() {
+    async function cycle() {
       const item = items[i];
       const isFirst  = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
@@ -251,66 +256,62 @@
       const hasNothing = lineHasNothing(item);
 
       // Per-item durations
-      const fadeInMs  = fadeInBase; // same slow fade-in for all lines
-      const fadeOutMs = isFirst ? Math.round(fadeOutBase * firstFadeOutMult) : fadeOutBase;
-      const holdMs    = isLink ? linkHold
-                        : isThanks ? thanksHold
-                        : isFirst  ? Math.round(holdBase * firstHoldMult)
-                                   : holdBase;
+      const fadeOutThis = isFirst ? Math.round(fadeOutMs * firstFadeOutMult) : fadeOutMs;
+      const holdMs = isLink ? linkHold
+                    : isThanks ? thanksHold
+                    : isFirst  ? Math.round(holdBase * firstHoldMult)
+                               : holdBase;
 
-      // Set content
+      // Render content (tokens for "nothing" lines)
       el.innerHTML = renderItemToHTML(item);
 
-      // --- FORCE a fresh fade-in every line (opacity 0 -> 1) ---
-      el.style.transition = 'none';
+      // Ensure starting opacity 0, then animate to 1 for EVERY line
       el.style.opacity = '0';
-      // force reflow so the browser registers opacity 0
-      void el.offsetWidth;
-      // now apply the fade-in transition and go to 1
-      el.style.transition = `opacity ${fadeInMs}ms cubic-bezier(0.2, 0, 0, 1)`;
-      el.style.opacity = '1';
+      await Promise.resolve(); // microtask break
+      await animateOnce(el, [{ opacity: 0 }, { opacity: 1 }], {
+        duration: fadeInMs,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+        fill: 'forwards'
+      });
 
-      // Prepare token transitions for partial fade-out
+      // Prep token transitions for partial fade (if needed)
       if (hasNothing) {
         el.querySelectorAll('.token').forEach(t => {
           t.style.transitionProperty = 'opacity';
           t.style.transitionTimingFunction = 'ease-in-out';
-          t.style.transitionDuration = `${fadeOutMs}ms`;
+          t.style.transitionDuration = `${fadeOutThis}ms`;
           t.style.opacity = '1';
         });
       }
 
-      // After fade-in + hold, fade out
-      setTimeout(() => {
-        if (hasNothing) {
-          // Fade the non-"nothing" parts first
-          el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
+      // Hold the line
+      await new Promise(r => setTimeout(r, holdMs));
 
-          // After extra hold, fade the "nothing" tokens
-          setTimeout(() => {
-            el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
+      if (hasNothing) {
+        // Fade non-"nothing" first
+        el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
+        await new Promise(r => setTimeout(r, nothingExtraHold));
 
-            // After that fade finishes, advance
-            setTimeout(() => {
-              i = (i + 1) % items.length;
-              cycle();
-            }, fadeOutMs + gap);
-          }, nothingExtraHold);
-        } else {
-          // Lines without "nothing" (or link items): fade the whole container
-          el.style.transition = `opacity ${fadeOutMs}ms ease-in-out`;
-          el.style.opacity = '0';
-          setTimeout(() => {
-            i = (i + 1) % items.length;
-            cycle();
-          }, fadeOutMs + gap);
-        }
-      }, fadeInMs + holdMs);
+        // Then fade "nothing"
+        el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
+        await new Promise(r => setTimeout(r, fadeOutThis + gap));
+      } else {
+        // Fade entire container out
+        await animateOnce(el, [{ opacity: 1 }, { opacity: 0 }], {
+          duration: fadeOutThis,
+          easing: 'ease-in-out',
+          fill: 'forwards'
+        });
+        await new Promise(r => setTimeout(r, gap));
+      }
+
+      // Next line
+      i = (i + 1) % items.length;
+      cycle();
     }
 
     // Reduced motion
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const first = items[0];
       el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
