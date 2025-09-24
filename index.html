@@ -17,10 +17,13 @@
       --hold-ms: 1200;
       --gap-ms: 200;
 
-      /* first & last line adjustments */
-      --first-hold-mult: 1.5;   /* 50% longer hold for the first line */
-      --first-fade-mult: 1.5;   /* 1.5x slower fade for the first line */
-      --hold-last-ms: 3200;     /* longer pause on the last line */
+      /* first line tweaks */
+      --first-hold-mult: 1.5;  /* 50% longer hold for the first line */
+      --first-fade-mult: 1.5;  /* 1.5x slower fade for the first line */
+
+      /* special holds */
+      --thanks-hold-ms: 3200;  /* linger on “Thanks for nothing.” */
+      --link-hold-ms: 10000;   /* each link stays ~10s */
     }
 
     html, body {
@@ -46,10 +49,14 @@
       text-align: center;
       max-width: min(90vw, 1200px);
       opacity: 0;
-      /* JS will adjust transition-duration per line */
       transition-property: opacity;
       transition-timing-function: ease-in-out;
       will-change: opacity;
+    }
+
+    #line a {
+      color: inherit;
+      text-decoration: underline;
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -61,7 +68,8 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    const lines = [
+    // Poem lines (as strings), followed by two link items
+    const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
       `A whole lotta nothing.`,
@@ -153,7 +161,10 @@
       `It’s worth nothing.`,
       `I’ve got nothing.`,
       `You are nothing.`,
-      `Thanks for nothing.`
+      `Thanks for nothing.`,
+      // Links (each holds ~10s)
+      { linkText: 'Art in Odd Places, NYC (October 18-19, 2025)', href: 'https://nothing.artinoddplaces.org/' },
+      { linkText: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' },
     ];
 
     const el = document.getElementById('line');
@@ -163,38 +174,51 @@
     const fadeBase = parseInt(css.getPropertyValue('--fade-ms')) || 800;
     const holdBase = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
     const gap      = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
-    const holdLast = parseInt(css.getPropertyValue('--hold-last-ms')) || (holdBase * 3);
     const firstHoldMult = parseFloat(css.getPropertyValue('--first-hold-mult')) || 1.5;
     const firstFadeMult = parseFloat(css.getPropertyValue('--first-fade-mult')) || 1.5;
+    const thanksHold = parseInt(css.getPropertyValue('--thanks-hold-ms')) || (holdBase * 3);
+    const linkHold   = parseInt(css.getPropertyValue('--link-hold-ms'))   || 10000;
+
+    function isLink(item) {
+      return typeof item === 'object' && item && 'href' in item;
+    }
 
     let i = 0;
 
     function cycle() {
+      const item = items[i];
       const isFirst = i === 0;
-      const isLast  = i === lines.length - 1;
+      const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
+      const isLinkItem = isLink(item);
 
-      // Compute per-line durations
+      // Durations
       const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
       const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
-      const holdMs    = isFirst ? Math.round(holdBase * firstHoldMult) : (isLast ? holdLast : holdBase);
+      const holdMs    = isLinkItem ? linkHold : (isThanks ? thanksHold : (isFirst ? Math.round(holdBase * firstHoldMult) : holdBase));
 
-      // Set text and ensure hidden
-      el.textContent = lines[i];
+      // Set content
       el.style.opacity = '0';
       el.style.transitionDuration = `${fadeInMs}ms`;
+      if (isLinkItem) {
+        const text = item.linkText;
+        const href = item.href;
+        el.innerHTML = `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      } else {
+        el.textContent = item;
+      }
 
-      // next frame -> fade in
+      // Fade in
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
-        // after fade-in + hold, fade out (with possibly different duration)
+        // after fade-in + hold, fade out
         setTimeout(() => {
           el.style.transitionDuration = `${fadeOutMs}ms`;
           el.style.opacity = '0';
 
           // after fade-out + gap, advance
           setTimeout(() => {
-            i = (i + 1) % lines.length;
+            i = (i + 1) % items.length;
             cycle();
           }, fadeOutMs + gap);
         }, fadeInMs + holdMs);
@@ -204,7 +228,8 @@
     // Respect reduced motion: show first line only
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
-      el.textContent = lines[0];
+      const first = items[0];
+      el.textContent = typeof first === 'string' ? first : first.linkText;
       el.style.opacity = '1';
     } else {
       cycle();
