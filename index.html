@@ -13,15 +13,14 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-in-ms: 3000;          /* SLOWER fade-in (pure white → black) */
-      --fade-out-ms: 800;          /* base fade-out */
+      --fade-in-ms: 3000;            /* slower fade-in for ALL lines */
+      --fade-out-ms: 800;            /* base fade-out */
       --hold-ms: 1200;
       --gap-ms: 200;
 
       /* first line tweaks */
-      --first-hold-mult: 2;        /* first line visible 2x longer */
-      --first-fade-in-mult: 1;     /* keep first-line fade-in same speed */
-      --first-fade-out-mult: 2;    /* first line fades out slower */
+      --first-hold-mult: 2;          /* first line visible 2x longer */
+      --first-fade-out-mult: 2;      /* first line fades out slower */
 
       /* specials */
       --thanks-hold-ms: 3200;        /* linger on “Thanks for nothing.” */
@@ -55,14 +54,9 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-
-      /* We'll animate color for fade-in; start fully transparent black */
-      color: rgba(0,0,0,0);
-
-      /* We still use opacity for some fade-outs (links / no-"nothing" lines) */
-      opacity: 1;
-
-      will-change: color, opacity;
+      opacity: 0; /* will animate 0 -> 1 on every line */
+      color: #000; /* fade is via opacity now */
+      will-change: opacity;
     }
 
     /* Token spans so we can fade parts independently on fade-out */
@@ -86,7 +80,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #line, .token { transition: none; opacity: 1; color: #000; }
+      #line, .token { transition: none; opacity: 1; }
     }
   </style>
 </head>
@@ -206,9 +200,8 @@
     const holdBase    = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
     const gap         = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
 
-    const firstHoldMult     = parseFloat(css.getPropertyValue('--first-hold-mult'))     || 2;
-    const firstFadeInMult   = parseFloat(css.getPropertyValue('--first-fade-in-mult'))  || 1;
-    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
+    const firstHoldMult    = parseFloat(css.getPropertyValue('--first-hold-mult'))     || 2;
+    const firstFadeOutMult = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
 
     const thanksHold        = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
     const linkHold          = parseInt(css.getPropertyValue('--link-hold-ms'))          || 10000;
@@ -258,7 +251,7 @@
       const hasNothing = lineHasNothing(item);
 
       // Per-item durations
-      const fadeInMs  = isFirst ? Math.round(fadeInBase  * firstFadeInMult)  : fadeInBase;
+      const fadeInMs  = fadeInBase; // same slow fade-in for all lines
       const fadeOutMs = isFirst ? Math.round(fadeOutBase * firstFadeOutMult) : fadeOutBase;
       const holdMs    = isLink ? linkHold
                         : isThanks ? thanksHold
@@ -268,10 +261,14 @@
       // Set content
       el.innerHTML = renderItemToHTML(item);
 
-      // Start from transparent text color; set up transitions for color (fade-in) and opacity (fallback fade-out)
-      el.style.transition = `color ${fadeInMs}ms linear, opacity ${fadeOutMs}ms ease-in-out`;
-      el.style.color = 'rgba(0,0,0,0)';  // fully transparent black
-      el.style.opacity = 1;              // ensure container is visible (we'll fade tokens or container later)
+      // --- FORCE a fresh fade-in every line (opacity 0 -> 1) ---
+      el.style.transition = 'none';
+      el.style.opacity = '0';
+      // force reflow so the browser registers opacity 0
+      void el.offsetWidth;
+      // now apply the fade-in transition and go to 1
+      el.style.transition = `opacity ${fadeInMs}ms cubic-bezier(0.2, 0, 0, 1)`;
+      el.style.opacity = '1';
 
       // Prepare token transitions for partial fade-out
       if (hasNothing) {
@@ -283,36 +280,32 @@
         });
       }
 
-      // Fade IN via color (true white → gray → black)
-      requestAnimationFrame(() => {
-        el.style.color = '#000';
+      // After fade-in + hold, fade out
+      setTimeout(() => {
+        if (hasNothing) {
+          // Fade the non-"nothing" parts first
+          el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
 
-        // After fade-in + hold, fade OUT
-        setTimeout(() => {
-          if (hasNothing) {
-            // Fade the non-"nothing" parts first
-            el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
+          // After extra hold, fade the "nothing" tokens
+          setTimeout(() => {
+            el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
 
-            // After extra hold, fade the "nothing" tokens
-            setTimeout(() => {
-              el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
-
-              // After that fade finishes, advance
-              setTimeout(() => {
-                i = (i + 1) % items.length;
-                cycle();
-              }, fadeOutMs + gap);
-            }, nothingExtraHold);
-          } else {
-            // Lines without "nothing" (or link items): fade the whole container
-            el.style.opacity = 0;
+            // After that fade finishes, advance
             setTimeout(() => {
               i = (i + 1) % items.length;
               cycle();
             }, fadeOutMs + gap);
-          }
-        }, fadeInMs + holdMs);
-      });
+          }, nothingExtraHold);
+        } else {
+          // Lines without "nothing" (or link items): fade the whole container
+          el.style.transition = `opacity ${fadeOutMs}ms ease-in-out`;
+          el.style.opacity = '0';
+          setTimeout(() => {
+            i = (i + 1) % items.length;
+            cycle();
+          }, fadeOutMs + gap);
+        }
+      }, fadeInMs + holdMs);
     }
 
     // Reduced motion
@@ -321,7 +314,6 @@
       const first = items[0];
       el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
-      el.style.color = '#000';
     } else {
       cycle();
     }
