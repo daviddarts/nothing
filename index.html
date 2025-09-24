@@ -18,12 +18,13 @@
       --gap-ms: 200;
 
       /* first line tweaks */
-      --first-hold-mult: 1.5;  /* 50% longer hold for the first line */
-      --first-fade-mult: 1.5;  /* 1.5x slower fade for the first line */
+      --first-hold-mult: 2;        /* first line visible 2x longer */
+      --first-fade-in-mult: 1;     /* normal fade-in */
+      --first-fade-out-mult: 2;    /* slower fade-out */
 
-      /* special holds */
-      --thanks-hold-ms: 3200;  /* linger on “Thanks for nothing.” */
-      --link-hold-ms: 10000;   /* each link stays ~10s */
+      /* specials */
+      --thanks-hold-ms: 3200;      /* linger on “Thanks for nothing.” */
+      --link-hold-ms: 10000;       /* each promo item ~10s */
     }
 
     html, body {
@@ -54,9 +55,10 @@
       will-change: opacity;
     }
 
+    /* Remove underline on links, keep color inherited */
     #line a {
       color: inherit;
-      text-decoration: underline;
+      text-decoration: none;
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -68,7 +70,7 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    // Poem lines (as strings), followed by two link items
+    // Poem lines followed by three promo items (two links + one text-only date)
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -162,26 +164,28 @@
       `I’ve got nothing.`,
       `You are nothing.`,
       `Thanks for nothing.`,
-      // Links (each holds ~10s)
-      { linkText: 'Art in Odd Places, NYC (October 18-19, 2025)', href: 'https://nothing.artinoddplaces.org/' },
-      { linkText: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' },
+      // Promo items (hold ~10s each)
+      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/', promo: true },
+      { text: 'October 18-19', promo: true }, // no link
+      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com', promo: true },
     ];
 
     const el = document.getElementById('line');
 
-    // Read timings from CSS vars
+    // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeBase = parseInt(css.getPropertyValue('--fade-ms')) || 800;
-    const holdBase = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
-    const gap      = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
-    const firstHoldMult = parseFloat(css.getPropertyValue('--first-hold-mult')) || 1.5;
-    const firstFadeMult = parseFloat(css.getPropertyValue('--first-fade-mult')) || 1.5;
+    const fadeBase  = parseInt(css.getPropertyValue('--fade-ms')) || 800;
+    const holdBase  = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
+    const gap       = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
+    const firstHoldMult     = parseFloat(css.getPropertyValue('--first-hold-mult'))    || 2;
+    const firstFadeInMult   = parseFloat(css.getPropertyValue('--first-fade-in-mult')) || 1;
+    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult'))|| 2;
     const thanksHold = parseInt(css.getPropertyValue('--thanks-hold-ms')) || (holdBase * 3);
     const linkHold   = parseInt(css.getPropertyValue('--link-hold-ms'))   || 10000;
 
-    function isLink(item) {
-      return typeof item === 'object' && item && 'href' in item;
-    }
+    const isObj = (item) => typeof item === 'object' && item !== null;
+    const isLinkItem = (item) => isObj(item) && 'href' in item;
+    const isPromo = (item) => isObj(item) && item.promo === true;
 
     let i = 0;
 
@@ -189,20 +193,23 @@
       const item = items[i];
       const isFirst = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
-      const isLinkItem = isLink(item);
 
-      // Durations
-      const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
-      const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
-      const holdMs    = isLinkItem ? linkHold : (isThanks ? thanksHold : (isFirst ? Math.round(holdBase * firstHoldMult) : holdBase));
+      // Per-item durations
+      const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeInMult)  : fadeBase;
+      const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeOutMult) : fadeBase;
+      const holdMs    = isPromo(item) ? linkHold
+                        : isThanks ? thanksHold
+                        : isFirst  ? Math.round(holdBase * firstHoldMult)
+                                   : holdBase;
 
       // Set content
       el.style.opacity = '0';
       el.style.transitionDuration = `${fadeInMs}ms`;
-      if (isLinkItem) {
-        const text = item.linkText;
-        const href = item.href;
-        el.innerHTML = `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+
+      if (isLinkItem(item)) {
+        el.innerHTML = `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
+      } else if (isObj(item)) {
+        el.textContent = item.text;
       } else {
         el.textContent = item;
       }
@@ -211,12 +218,11 @@
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
-        // after fade-in + hold, fade out
+        // After fade-in + hold, fade out
         setTimeout(() => {
           el.style.transitionDuration = `${fadeOutMs}ms`;
           el.style.opacity = '0';
 
-          // after fade-out + gap, advance
           setTimeout(() => {
             i = (i + 1) % items.length;
             cycle();
@@ -225,11 +231,11 @@
       });
     }
 
-    // Respect reduced motion: show first line only
+    // Reduced motion
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       const first = items[0];
-      el.textContent = typeof first === 'string' ? first : first.linkText;
+      el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
     } else {
       cycle();
