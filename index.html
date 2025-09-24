@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NOTHING</title>
 
-  <!-- Favicon will be injected via JS to avoid caching issues -->
-
   <!-- Speed up Google Fonts + load Roboto -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,12 +12,15 @@
 
   <style>
     :root {
-      /* timings in ms */
+      /* base timings (ms) */
       --fade-ms: 800;
-      --hold-ms: 1200;        /* default hold for middle lines */
-      --hold-first-ms: 2800;  /* longer pause on the first line */
-      --hold-last-ms: 3200;   /* longer pause on the last line */
+      --hold-ms: 1200;
       --gap-ms: 200;
+
+      /* first & last line adjustments */
+      --first-hold-mult: 1.5;   /* 50% longer hold for the first line */
+      --first-fade-mult: 1.5;   /* 1.5x slower fade for the first line */
+      --hold-last-ms: 3200;     /* longer pause on the last line */
     }
 
     html, body {
@@ -45,7 +46,9 @@
       text-align: center;
       max-width: min(90vw, 1200px);
       opacity: 0;
-      transition: opacity calc(var(--fade-ms) * 1ms) ease-in-out;
+      /* JS will adjust transition-duration per line */
+      transition-property: opacity;
+      transition-timing-function: ease-in-out;
       will-change: opacity;
     }
 
@@ -110,32 +113,44 @@
 
     // Read timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fade = parseInt(css.getPropertyValue('--fade-ms')) || 800;
-    const hold = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
-    const holdFirst = parseInt(css.getPropertyValue('--hold-first-ms')) || (hold * 2.5);
-    const holdLast  = parseInt(css.getPropertyValue('--hold-last-ms'))  || (hold * 3);
-    const gap  = parseInt(css.getPropertyValue('--gap-ms')) || 200;
+    const fadeBase = parseInt(css.getPropertyValue('--fade-ms')) || 800;
+    const holdBase = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
+    const gap      = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
+    const holdLast = parseInt(css.getPropertyValue('--hold-last-ms')) || (holdBase * 3);
+    const firstHoldMult = parseFloat(css.getPropertyValue('--first-hold-mult')) || 1.5;
+    const firstFadeMult = parseFloat(css.getPropertyValue('--first-fade-mult')) || 1.5;
 
     let i = 0;
 
     function cycle() {
+      const isFirst = i === 0;
+      const isLast  = i === lines.length - 1;
+
+      // Compute per-line durations
+      const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
+      const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeMult) : fadeBase;
+      const holdMs    = isFirst ? Math.round(holdBase * firstHoldMult) : (isLast ? holdLast : holdBase);
+
+      // Set text and ensure hidden
       el.textContent = lines[i];
       el.style.opacity = '0';
+      el.style.transitionDuration = `${fadeInMs}ms`;
 
+      // next frame -> fade in
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
-        const isFirst = i === 0;
-        const isLast  = i === lines.length - 1;
-        const thisHold = isFirst ? holdFirst : (isLast ? holdLast : hold);
-
+        // after fade-in + hold, fade out (with possibly different duration)
         setTimeout(() => {
+          el.style.transitionDuration = `${fadeOutMs}ms`;
           el.style.opacity = '0';
+
+          // after fade-out + gap, advance
           setTimeout(() => {
             i = (i + 1) % lines.length;
             cycle();
-          }, fade + gap);
-        }, fade + thisHold);
+          }, fadeOutMs + gap);
+        }, fadeInMs + holdMs);
       });
     }
 
