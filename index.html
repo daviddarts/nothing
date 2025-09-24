@@ -13,15 +13,15 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-in-ms: 2000;        /* slower fade-in */
-      --fade-out-ms: 800;        /* fade-out base */
+      --fade-in-ms: 2000;        /* slower fade-in (increase for softer entry) */
+      --fade-out-ms: 800;        /* base fade-out */
       --hold-ms: 1200;
       --gap-ms: 200;
 
       /* first line tweaks */
       --first-hold-mult: 2;      /* first line visible 2x longer */
-      --first-fade-in-mult: 1;   /* normal fade-in speed multiplier */
-      --first-fade-out-mult: 2;  /* slower fade-out on first line */
+      --first-fade-in-mult: 1;   /* keep first-line fade-in same speed */
+      --first-fade-out-mult: 2;  /* first line fades out slower */
 
       /* specials */
       --thanks-hold-ms: 3200;        /* linger on “Thanks for nothing.” */
@@ -57,7 +57,8 @@
       max-width: min(90vw, 1200px);
       opacity: 0;
       transition-property: opacity;
-      transition-timing-function: ease-in-out;
+      /* gentler easing for both in/out; slow in is mostly from --fade-in-ms */
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
       will-change: opacity;
     }
 
@@ -197,7 +198,7 @@
 
     // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 1400;
+    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 2000;
     const fadeOutBase = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
     const holdBase    = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
     const gap         = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
@@ -270,13 +271,13 @@
       if (hasNothing) {
         el.querySelectorAll('.token').forEach(t => {
           t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionTimingFunction = 'cubic-bezier(0.2, 0, 0, 1)';
           t.style.transitionDuration = `${fadeOutMs}ms`;
           t.style.opacity = '1';
         });
       }
 
-      // Fade in container (slower now)
+      // Fade in container (slower now via --fade-in-ms)
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
