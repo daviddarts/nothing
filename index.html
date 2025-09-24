@@ -24,7 +24,7 @@
 
       /* specials */
       --thanks-hold-ms: 3200;      /* linger on “Thanks for nothing.” */
-      --link-hold-ms: 10000;       /* each promo item ~10s */
+      --link-hold-ms: 10000;       /* linked promo items ~10s */
     }
 
     html, body {
@@ -55,9 +55,9 @@
       will-change: opacity;
     }
 
-    /* Remove underline on links, keep color inherited */
+    /* Links: red, no underline */
     #line a {
-      color: inherit;
+      color: red;
       text-decoration: none;
     }
 
@@ -70,7 +70,10 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    // Poem lines followed by three promo items (two links + one text-only date)
+    // Poem lines followed by three promo items:
+    // 1) AiOP 2025 NOTHING (link, red, ~10s)
+    // 2) October 18-19 (no link, normal hold)
+    // 3) DAVIDDARTS.COM (link, red, ~10s)
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -164,10 +167,10 @@
       `I’ve got nothing.`,
       `You are nothing.`,
       `Thanks for nothing.`,
-      // Promo items (hold ~10s each)
-      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/', promo: true },
-      { text: 'October 18-19', promo: true }, // no link
-      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com', promo: true },
+      // Promo sequence
+      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/', promo: true }, // link, ~10s
+      { text: 'October 18-19' }, // no link, normal hold
+      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com', promo: true }, // link, ~10s
     ];
 
     const el = document.getElementById('line');
@@ -185,7 +188,6 @@
 
     const isObj = (item) => typeof item === 'object' && item !== null;
     const isLinkItem = (item) => isObj(item) && 'href' in item;
-    const isPromo = (item) => isObj(item) && item.promo === true;
 
     let i = 0;
 
@@ -193,11 +195,12 @@
       const item = items[i];
       const isFirst = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
+      const isLink = isLinkItem(item);
 
       // Per-item durations
       const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeInMult)  : fadeBase;
       const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeOutMult) : fadeBase;
-      const holdMs    = isPromo(item) ? linkHold
+      const holdMs    = isLink ? linkHold
                         : isThanks ? thanksHold
                         : isFirst  ? Math.round(holdBase * firstHoldMult)
                                    : holdBase;
@@ -206,7 +209,7 @@
       el.style.opacity = '0';
       el.style.transitionDuration = `${fadeInMs}ms`;
 
-      if (isLinkItem(item)) {
+      if (isLink) {
         el.innerHTML = `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
       } else if (isObj(item)) {
         el.textContent = item.text;
