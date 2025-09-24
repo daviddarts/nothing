@@ -13,23 +13,24 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-ms: 800;
+      --fade-in-ms: 1400;        /* slower fade-in */
+      --fade-out-ms: 800;        /* fade-out base */
       --hold-ms: 1200;
       --gap-ms: 200;
 
       /* first line tweaks */
-      --first-hold-mult: 2;        /* first line visible 2x longer */
-      --first-fade-in-mult: 1;     /* normal fade-in */
-      --first-fade-out-mult: 2;    /* slower fade-out */
+      --first-hold-mult: 2;      /* first line visible 2x longer */
+      --first-fade-in-mult: 1;   /* normal fade-in speed multiplier */
+      --first-fade-out-mult: 2;  /* slower fade-out on first line */
 
       /* specials */
-      --thanks-hold-ms: 3200;      /* linger on “Thanks for nothing.” */
-      --link-hold-ms: 10000;       /* linked promo items ~10s */
+      --thanks-hold-ms: 3200;        /* linger on “Thanks for nothing.” */
+      --link-hold-ms: 10000;         /* linked promo items ~10s */
       --nothing-extra-hold-ms: 1000; /* “nothing” stays 1s longer on fade-out */
 
-      /* link styling */
-      --link-color: #6b7280;       /* gray-500 */
-      --link-hover: #111827;       /* gray-900 */
+      /* link styling (gray, no underline) */
+      --link-color: #6b7280;     /* gray-500 */
+      --link-hover: #111827;     /* gray-900 */
     }
 
     html, body {
@@ -196,17 +197,22 @@
 
     // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeBase  = parseInt(css.getPropertyValue('--fade-ms')) || 800;
-    const holdBase  = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
-    const gap       = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
-    const firstHoldMult     = parseFloat(css.getPropertyValue('--first-hold-mult'))    || 2;
-    const firstFadeInMult   = parseFloat(css.getPropertyValue('--first-fade-in-mult')) || 1;
-    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult'))|| 2;
-    const thanksHold = parseInt(css.getPropertyValue('--thanks-hold-ms')) || (holdBase * 3);
-    const linkHold   = parseInt(css.getPropertyValue('--link-hold-ms'))   || 10000;
-    const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
+    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 1400;
+    const fadeOutBase = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
+    const holdBase    = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
+    const gap         = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
 
-    const NOTHING_RE = /(nothing)s?/gi; // match "nothing" and "nothings"
+    const firstHoldMult     = parseFloat(css.getPropertyValue('--first-hold-mult'))     || 2;
+    const firstFadeInMult   = parseFloat(css.getPropertyValue('--first-fade-in-mult'))  || 1;
+    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
+
+    const thanksHold        = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
+    const linkHold          = parseInt(css.getPropertyValue('--link-hold-ms'))          || 10000;
+    const nothingExtraHold  = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
+
+    // Regex for tokenizing vs detection
+    const NOTHING_SPLIT = /(nothing)s?/gi; // tokenize "nothing"/"nothings"
+    const NOTHING_TEST  = /nothing/i;      // non-stateful detection
 
     const isObj = (item) => typeof item === 'object' && item !== null;
     const isLinkItem = (item) => isObj(item) && 'href' in item;
@@ -216,11 +222,11 @@
         return `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
       }
       const text = isObj(item) ? item.text : String(item);
-      const parts = text.split(NOTHING_RE);
+      const parts = text.split(NOTHING_SPLIT);
       let html = '';
       for (let idx = 0; idx < parts.length; idx++) {
         const part = parts[idx];
-        if (part === undefined || part === '') continue;
+        if (!part) continue;
         if (/^nothing$/i.test(part)) {
           html += `<span class="token nothing">${part}</span>`;
         } else if (/^nothings$/i.test(part)) {
@@ -234,21 +240,22 @@
 
     function lineHasNothing(item) {
       if (isLinkItem(item)) return false;
-      return NOTHING_RE.test(isObj(item) ? item.text : String(item));
+      const text = isObj(item) ? item.text : String(item);
+      return NOTHING_TEST.test(text); // non-global, non-stateful
     }
 
     let i = 0;
 
     function cycle() {
       const item = items[i];
-      const isFirst = i === 0;
+      const isFirst  = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
-      const isLink = isLinkItem(item);
+      const isLink   = isLinkItem(item);
       const hasNothing = lineHasNothing(item);
 
       // Per-item durations
-      const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeInMult)  : fadeBase;
-      const fadeOutMs = isFirst ? Math.round(fadeBase * firstFadeOutMult) : fadeBase;
+      const fadeInMs  = isFirst ? Math.round(fadeInBase  * firstFadeInMult)  : fadeInBase;
+      const fadeOutMs = isFirst ? Math.round(fadeOutBase * firstFadeOutMult) : fadeOutBase;
       const holdMs    = isLink ? linkHold
                         : isThanks ? thanksHold
                         : isFirst  ? Math.round(holdBase * firstHoldMult)
@@ -259,7 +266,7 @@
       el.style.transitionDuration = `${fadeInMs}ms`;
       el.innerHTML = renderItemToHTML(item);
 
-      // Prepare token transitions
+      // Prepare token transitions for partial fade
       if (hasNothing) {
         el.querySelectorAll('.token').forEach(t => {
           t.style.transitionProperty = 'opacity';
@@ -269,7 +276,7 @@
         });
       }
 
-      // Fade in container
+      // Fade in container (slower now)
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
@@ -279,7 +286,7 @@
             // Fade the non-"nothing" parts first
             el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
 
-            // After extra hold, fade "nothing"
+            // After extra hold, fade "nothing" itself
             setTimeout(() => {
               el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
 
