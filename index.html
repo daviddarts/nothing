@@ -13,15 +13,15 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-in-ms: 2000;        /* slower fade-in (increase for softer entry) */
-      --fade-out-ms: 800;        /* base fade-out */
+      --fade-in-ms: 3000;          /* SLOWER fade-in (pure white → black) */
+      --fade-out-ms: 800;          /* base fade-out */
       --hold-ms: 1200;
       --gap-ms: 200;
 
       /* first line tweaks */
-      --first-hold-mult: 2;      /* first line visible 2x longer */
-      --first-fade-in-mult: 1;   /* keep first-line fade-in same speed */
-      --first-fade-out-mult: 2;  /* first line fades out slower */
+      --first-hold-mult: 2;        /* first line visible 2x longer */
+      --first-fade-in-mult: 1;     /* keep first-line fade-in same speed */
+      --first-fade-out-mult: 2;    /* first line fades out slower */
 
       /* specials */
       --thanks-hold-ms: 3200;        /* linger on “Thanks for nothing.” */
@@ -29,8 +29,8 @@
       --nothing-extra-hold-ms: 1000; /* “nothing” stays 1s longer on fade-out */
 
       /* link styling (gray, no underline) */
-      --link-color: #6b7280;     /* gray-500 */
-      --link-hover: #111827;     /* gray-900 */
+      --link-color: #6b7280;  /* gray-500 */
+      --link-hover: #111827;  /* gray-900 */
     }
 
     html, body {
@@ -55,14 +55,17 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-      opacity: 0;
-      transition-property: opacity;
-      /* gentler easing for both in/out; slow in is mostly from --fade-in-ms */
-      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-      will-change: opacity;
+
+      /* We'll animate color for fade-in; start fully transparent black */
+      color: rgba(0,0,0,0);
+
+      /* We still use opacity for some fade-outs (links / no-"nothing" lines) */
+      opacity: 1;
+
+      will-change: color, opacity;
     }
 
-    /* Token spans so we can fade parts independently */
+    /* Token spans so we can fade parts independently on fade-out */
     .token { transition-property: opacity; }
     .rest  { opacity: 1; }
     .nothing { opacity: 1; }
@@ -83,7 +86,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #line, .token { transition: none; opacity: 1; }
+      #line, .token { transition: none; opacity: 1; color: #000; }
     }
   </style>
 </head>
@@ -198,7 +201,7 @@
 
     // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 2000;
+    const fadeInBase  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 3000;
     const fadeOutBase = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
     const holdBase    = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
     const gap         = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
@@ -263,31 +266,34 @@
                                    : holdBase;
 
       // Set content
-      el.style.opacity = '0';
-      el.style.transitionDuration = `${fadeInMs}ms`;
       el.innerHTML = renderItemToHTML(item);
 
-      // Prepare token transitions for partial fade
+      // Start from transparent text color; set up transitions for color (fade-in) and opacity (fallback fade-out)
+      el.style.transition = `color ${fadeInMs}ms linear, opacity ${fadeOutMs}ms ease-in-out`;
+      el.style.color = 'rgba(0,0,0,0)';  // fully transparent black
+      el.style.opacity = 1;              // ensure container is visible (we'll fade tokens or container later)
+
+      // Prepare token transitions for partial fade-out
       if (hasNothing) {
         el.querySelectorAll('.token').forEach(t => {
           t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'cubic-bezier(0.2, 0, 0, 1)';
+          t.style.transitionTimingFunction = 'ease-in-out';
           t.style.transitionDuration = `${fadeOutMs}ms`;
           t.style.opacity = '1';
         });
       }
 
-      // Fade in container (slower now via --fade-in-ms)
+      // Fade IN via color (true white → gray → black)
       requestAnimationFrame(() => {
-        el.style.opacity = '1';
+        el.style.color = '#000';
 
-        // After fade-in + hold, fade out
+        // After fade-in + hold, fade OUT
         setTimeout(() => {
           if (hasNothing) {
             // Fade the non-"nothing" parts first
             el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
 
-            // After extra hold, fade "nothing" itself
+            // After extra hold, fade the "nothing" tokens
             setTimeout(() => {
               el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
 
@@ -298,9 +304,8 @@
               }, fadeOutMs + gap);
             }, nothingExtraHold);
           } else {
-            // Normal fade of whole container
-            el.style.transitionDuration = `${fadeOutMs}ms`;
-            el.style.opacity = '0';
+            // Lines without "nothing" (or link items): fade the whole container
+            el.style.opacity = 0;
             setTimeout(() => {
               i = (i + 1) % items.length;
               cycle();
@@ -316,6 +321,7 @@
       const first = items[0];
       el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
+      el.style.color = '#000';
     } else {
       cycle();
     }
