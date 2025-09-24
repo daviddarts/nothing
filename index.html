@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NOTHING</title>
 
+  <!-- Favicon will be injected via JS to avoid caching issues -->
+
   <!-- Speed up Google Fonts + load Roboto -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,8 +16,9 @@
     :root {
       /* timings in ms */
       --fade-ms: 800;
-      --hold-ms: 1200;
-      --hold-last-ms: 3200; /* longer pause on the last line */
+      --hold-ms: 1200;        /* default hold for middle lines */
+      --hold-first-ms: 2800;  /* longer pause on the first line */
+      --hold-last-ms: 3200;   /* longer pause on the last line */
       --gap-ms: 200;
     }
 
@@ -55,63 +58,63 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    // --- Poem logic ---
     const lines = [
-      `Nothing.`,
       `Nothing to see here.`,
-      `I’ve got nothing.`,
       `Less than nothing.`,
       `A whole lotta nothing.`,
       `A big fat nothingburger.`,
       `This is nothing new.`,
       `Nothing special.`,
-      `Nothing to say.`,
+      `Nothing to write home about.`,
+      `I’ve got nothing to say.`,
       `Nothing to do.`,
       `Nothing to wear.`,
       `Nothing to lose.`,
-      `Next to nothing.`,
-      `Nothing to write home about.`,
-      `Nothing to sneeze at.`,
+      `Next to nothing?`,
       `Think nothing of it.`,
       `Nothing ventured, nothing gained.`,
-      `Nothing to it.`,
-      `Sweet nothing.`,
+      `There’s nothing to it.`,
       `Nothing compares.`,
+      `Sweet nothing.`,
       `Nothing but the best.`,
-      `Double or nothing.`,
+      `Nothing to sneeze at.`,
       `Nothing can stop us.`,
       `Nothing can come between us.`,
-      `Stop at nothing.`,
+      `I will stop at nothing.`,
       `All or nothing.`,
+      `Nothing worth having comes easy.`,
+      `Double or nothing?`,
       `You have nothing to fear.`,
       `I’ve got nothing to gain.`,
       `Nothing to prove.`,
       `Nothing to declare.`,
       `Nothing to hide.`,
       `I’ve done nothing to regret.`,
-      `Say nothing.`,
+      `Time to say nothing.`,
       `Nothing ever goes as planned.`,
       `Nothing good happens after 2AM.`,
       `Nothing but trouble.`,
       `There’s nothing between us.`,
+      `You can’t expect something for nothing.`,
       `Is nothing sacred?`,
-      `Don’t expect something for nothing.`,
       `Nothing is free.`,
       `Nothing lasts forever.`,
-      `Nothing personal.`,
-      `Good-for-nothing.`,
+      `It’s nothing personal.`,
+      `You are good-for-nothing.`,
+      `I’ve got nothing.`,
       `You are nothing to me.`,
-      `I’ve got nothing left.`,
       `Thanks for nothing.`
     ];
 
     const el = document.getElementById('line');
 
+    // Read timings from CSS vars
     const css = getComputedStyle(document.documentElement);
     const fade = parseInt(css.getPropertyValue('--fade-ms')) || 800;
     const hold = parseInt(css.getPropertyValue('--hold-ms')) || 1200;
-    const holdLast = parseInt(css.getPropertyValue('--hold-last-ms')) || (hold * 3);
-    const gap  = parseInt(css.getPropertyValue('--gap-ms'))  || 200;
+    const holdFirst = parseInt(css.getPropertyValue('--hold-first-ms')) || (hold * 2.5);
+    const holdLast  = parseInt(css.getPropertyValue('--hold-last-ms'))  || (hold * 3);
+    const gap  = parseInt(css.getPropertyValue('--gap-ms')) || 200;
 
     let i = 0;
 
@@ -122,8 +125,9 @@
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
-        const isLast = i === lines.length - 1;
-        const thisHold = isLast ? holdLast : hold;
+        const isFirst = i === 0;
+        const isLast  = i === lines.length - 1;
+        const thisHold = isFirst ? holdFirst : (isLast ? holdLast : hold);
 
         setTimeout(() => {
           el.style.opacity = '0';
@@ -135,6 +139,7 @@
       });
     }
 
+    // Respect reduced motion: show first line only
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
       el.textContent = lines[0];
@@ -143,15 +148,13 @@
       cycle();
     }
 
-    // --- Favicon: force refresh each load (white box with black outline) ---
+    // Favicon: white box with black outline, injected with cache-busting
     (function setFavicon() {
       const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
            <rect x="8" y="8" width="48" height="48" fill="#fff" stroke="#000" stroke-width="4" rx="6" ry="6"/>
          </svg>`;
       const href = "data:image/svg+xml," + encodeURIComponent(svg) + "#v=" + Date.now();
-
-      // Remove any existing icons, then add a fresh one to bust cache
       document.querySelectorAll('link[rel="icon"]').forEach(n => n.remove());
       const link = document.createElement('link');
       link.rel = 'icon';
