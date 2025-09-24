@@ -25,6 +25,11 @@
       /* specials */
       --thanks-hold-ms: 3200;      /* linger on “Thanks for nothing.” */
       --link-hold-ms: 10000;       /* linked promo items ~10s */
+      --nothing-extra-hold-ms: 1000; /* “nothing” stays 1s longer on fade-out */
+
+      /* link styling */
+      --link-color: #6b7280;       /* gray-500 */
+      --link-hover: #111827;       /* gray-900 */
     }
 
     html, body {
@@ -55,14 +60,28 @@
       will-change: opacity;
     }
 
-    /* Links: red, no underline */
+    /* Token spans so we can fade parts independently */
+    .token { transition-property: opacity; }
+    .rest  { opacity: 1; }
+    .nothing { opacity: 1; }
+
+    /* Links: gray, no underline, clear hover/focus */
     #line a {
-      color: red;
+      color: var(--link-color);
       text-decoration: none;
+      cursor: pointer;
+    }
+    #line a:hover,
+    #line a:focus-visible {
+      color: var(--link-hover);
+    }
+    #line a:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 4px;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #line { transition: none; opacity: 1; }
+      #line, .token { transition: none; opacity: 1; }
     }
   </style>
 </head>
@@ -71,9 +90,9 @@
 
   <script>
     // Poem lines followed by three promo items:
-    // 1) AiOP 2025 NOTHING (link, red, ~10s)
+    // 1) AiOP 2025 NOTHING (link, gray, ~10s)
     // 2) October 18-19 (no link, normal hold)
-    // 3) DAVIDDARTS.COM (link, red, ~10s)
+    // 3) DAVIDDARTS.COM (link, gray, ~10s)
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -168,9 +187,9 @@
       `You are nothing.`,
       `Thanks for nothing.`,
       // Promo sequence
-      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/', promo: true }, // link, ~10s
-      { text: 'October 18-19' }, // no link, normal hold
-      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com', promo: true }, // link, ~10s
+      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/' }, // link, ~10s
+      { text: 'October 18-19' }, // normal hold
+      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' }, // link, ~10s
     ];
 
     const el = document.getElementById('line');
@@ -185,9 +204,38 @@
     const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult'))|| 2;
     const thanksHold = parseInt(css.getPropertyValue('--thanks-hold-ms')) || (holdBase * 3);
     const linkHold   = parseInt(css.getPropertyValue('--link-hold-ms'))   || 10000;
+    const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
+
+    const NOTHING_RE = /(nothing)s?/gi; // match "nothing" and "nothings"
 
     const isObj = (item) => typeof item === 'object' && item !== null;
     const isLinkItem = (item) => isObj(item) && 'href' in item;
+
+    function renderItemToHTML(item) {
+      if (isLinkItem(item)) {
+        return `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
+      }
+      const text = isObj(item) ? item.text : String(item);
+      const parts = text.split(NOTHING_RE);
+      let html = '';
+      for (let idx = 0; idx < parts.length; idx++) {
+        const part = parts[idx];
+        if (part === undefined || part === '') continue;
+        if (/^nothing$/i.test(part)) {
+          html += `<span class="token nothing">${part}</span>`;
+        } else if (/^nothings$/i.test(part)) {
+          html += `<span class="token nothing">nothing</span><span class="token rest">s</span>`;
+        } else {
+          html += `<span class="token rest">${part}</span>`;
+        }
+      }
+      return html;
+    }
+
+    function lineHasNothing(item) {
+      if (isLinkItem(item)) return false;
+      return NOTHING_RE.test(isObj(item) ? item.text : String(item));
+    }
 
     let i = 0;
 
@@ -196,6 +244,7 @@
       const isFirst = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
       const isLink = isLinkItem(item);
+      const hasNothing = lineHasNothing(item);
 
       // Per-item durations
       const fadeInMs  = isFirst ? Math.round(fadeBase * firstFadeInMult)  : fadeBase;
@@ -208,28 +257,47 @@
       // Set content
       el.style.opacity = '0';
       el.style.transitionDuration = `${fadeInMs}ms`;
+      el.innerHTML = renderItemToHTML(item);
 
-      if (isLink) {
-        el.innerHTML = `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
-      } else if (isObj(item)) {
-        el.textContent = item.text;
-      } else {
-        el.textContent = item;
+      // Prepare token transitions
+      if (hasNothing) {
+        el.querySelectorAll('.token').forEach(t => {
+          t.style.transitionProperty = 'opacity';
+          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionDuration = `${fadeOutMs}ms`;
+          t.style.opacity = '1';
+        });
       }
 
-      // Fade in
+      // Fade in container
       requestAnimationFrame(() => {
         el.style.opacity = '1';
 
         // After fade-in + hold, fade out
         setTimeout(() => {
-          el.style.transitionDuration = `${fadeOutMs}ms`;
-          el.style.opacity = '0';
+          if (hasNothing) {
+            // Fade the non-"nothing" parts first
+            el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
 
-          setTimeout(() => {
-            i = (i + 1) % items.length;
-            cycle();
-          }, fadeOutMs + gap);
+            // After extra hold, fade "nothing"
+            setTimeout(() => {
+              el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
+
+              // After that fade finishes, advance
+              setTimeout(() => {
+                i = (i + 1) % items.length;
+                cycle();
+              }, fadeOutMs + gap);
+            }, nothingExtraHold);
+          } else {
+            // Normal fade of whole container
+            el.style.transitionDuration = `${fadeOutMs}ms`;
+            el.style.opacity = '0';
+            setTimeout(() => {
+              i = (i + 1) % items.length;
+              cycle();
+            }, fadeOutMs + gap);
+          }
         }, fadeInMs + holdMs);
       });
     }
