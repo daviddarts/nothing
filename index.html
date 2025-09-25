@@ -43,20 +43,26 @@
       --link-hover: #111827;
     }
 
+    /* Make the page non-scrollable and stop rubber-banding */
     html, body {
       height: 100%;
       margin: 0;
       background: white;
       color: black;
+      overflow: hidden;            /* no page scroll */
+      overscroll-behavior: none;   /* block pull-to-refresh and bounce (iOS 16+) */
     }
 
     body {
+      position: fixed;             /* lock the viewport */
+      inset: 0;
+      height: 100dvh;              /* modern mobile-safe viewport height */
       display: flex;
       align-items: center;
       justify-content: center;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      touch-action: pan-y; /* default; we temporarily switch to none during horizontal swipes */
+      touch-action: none;          /* disable default touch panning on iOS */
       user-select: none;
       -webkit-user-select: none;
     }
@@ -211,7 +217,6 @@
     const firstFadeOutMult = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
 
     const thanksHold       = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || 1800;
-    const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
     const specialNothingExtraHold =
       parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 2800;
 
@@ -272,7 +277,7 @@
     let timers = new Set();
     let resumeTimer = null;
     let cycling = false;
-    let resumeAdvanceNext = false; // NEW: advance to next line when autoplay resumes
+    let resumeAdvanceNext = false;
 
     function schedule(fn, ms) {
       const id = setTimeout(() => {
@@ -300,10 +305,10 @@
       resumeTimer = setTimeout(() => {
         autoplay = true;
         if (resumeAdvanceNext) {
-          i = (i + 1) % items.length; // start from the next line
+          i = (i + 1) % items.length;
           resumeAdvanceNext = false;
         }
-        cycle(true); // reliably restart the loop
+        cycle(true);
       }, resumeIdleMs);
     }
 
@@ -317,17 +322,18 @@
       const isMiddlePoemLine = !isFirst && !isThanks && !isLink && !isOctober;
 
       // Per-item fade-out duration
-      let fadeOutThis = fadeOutMs;
-      if (isFirst) fadeOutThis = Math.round(fadeOutMs * firstFadeOutMult);
-      else if (isMiddlePoemLine) fadeOutThis = Math.round(fadeOutMs * middleFadeOutMult);
-      else if (isLink || isOctober) fadeOutThis = Math.round(fadeOutMs * promoFadeOutMult);
+      const fadeOutBase = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-out-ms')) || 800;
+      let fadeOutThis = fadeOutBase;
+      if (isFirst) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--first-fade-out-mult')) || 2));
+      else if (isMiddlePoemLine) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--middle-fade-out-mult')) || 0.75));
+      else if (isLink || isOctober) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--promo-fade-out-mult')) || 0.6));
 
       // Per-item hold
       const holdMs = isLink ? promoLinkHold
                     : isOctober ? octoberHold
                     : isThanks ? thanksHold
                     : isFirst  ? Math.round(holdBase * firstHoldMult)
-                               : 0; // middles start fading immediately
+                               : 0;
 
       const nothingPauseMs = (hasNothing && (isFirst || isThanks))
         ? specialNothingExtraHold
@@ -382,7 +388,7 @@
       if (!forceStart && (!autoplay || cycling)) return;
       cycling = true;
       while (autoplay) {
-        clearTimers(); // safety between lines
+        clearTimers();
         await showIndex(i);
         i = (i + 1) % items.length;
       }
@@ -390,21 +396,16 @@
     }
 
     function jumpBy(step) {
-      // Pause autoplay and schedule a clean resume (and advance on resume)
       pauseAndScheduleResume({ advanceOnResume: true });
-
-      // Cancel current activity
       clearTimers();
       cancelAllAnimations();
 
-      // Move to target and render it (middles skip the small hold)
       i = (i + step + items.length) % items.length;
       el.style.opacity = '0';
       showIndex(i, { skipHoldForMiddle: true });
-      // Loop will restart after idle -> and begin from the NEXT line after this one
     }
 
-    // Pointer swipe support (left/right) with axis lock to prevent vertical wobble
+    // Swipe and click handlers
     let tracking = null;
     const AXIS_LOCK_RATIO = 1.2;
     const MIN_VELOCITY = 0.35; // px/ms
@@ -418,35 +419,15 @@
         startY: e.clientY,
         lastX: e.clientX,
         lastY: e.clientY,
-        startT: now(),
-        locked: null // 'x' | 'y' once we decide
+        startT: now()
       };
     }
-
     function moveTrack(e) {
       if (!tracking || e.pointerId !== tracking.id) return;
       tracking.lastX = e.clientX;
       tracking.lastY = e.clientY;
-
-      // Decide lock
-      if (!tracking.locked) {
-        const dx = tracking.lastX - tracking.startX;
-        const dy = tracking.lastY - tracking.startY;
-        const ax = Math.abs(dx), ay = Math.abs(dy);
-        if (ax > ay * AXIS_LOCK_RATIO && ax > 6) {
-          tracking.locked = 'x';
-          document.body.style.touchAction = 'none'; // disable page scroll during horizontal swipe
-        } else if (ay > ax * AXIS_LOCK_RATIO && ay > 6) {
-          tracking.locked = 'y';
-        }
-      }
-
-      // If locked horizontally, prevent scroll jank
-      if (tracking.locked === 'x') {
-        e.preventDefault(); // requires passive:false listener
-      }
+      // With touch-action:none the browser will not scroll. No preventDefault needed.
     }
-
     function endTrack(e) {
       if (!tracking || e.pointerId !== tracking.id) return;
       const dt = Math.max(1, now() - tracking.startT);
@@ -459,9 +440,6 @@
       const passed = ax > swipeThresholdPx || vx > MIN_VELOCITY;
 
       const link = e.target.closest && e.target.closest('a');
-
-      // reset touchAction after gesture
-      document.body.style.touchAction = 'pan-y';
       tracking = null;
 
       if (link) return;
@@ -470,33 +448,33 @@
       }
     }
 
-    // Click to advance (ignore link clicks)
     function onClick(e) {
       const link = e.target.closest && e.target.closest('a');
       if (link) return;
       jumpBy(+1);
     }
 
-    // Optional: keyboard left/right for desktop
     function onKey(e) {
-      if (e.key === 'ArrowRight') { jumpBy(+1); }
-      else if (e.key === 'ArrowLeft') { jumpBy(-1); }
+      if (e.key === 'ArrowRight') jumpBy(+1);
+      else if (e.key === 'ArrowLeft') jumpBy(-1);
     }
 
-    // Reduced motion
+    // Block stray touchmove on older iOS that ignores touch-action on <body>
+    document.addEventListener('touchmove', (e) => {
+      const onLink = e.target.closest && e.target.closest('a');
+      if (!onLink) e.preventDefault();
+    }, { passive: false });
+
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const first = items[0];
       el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
     } else {
-      // Start autoplay
       cycle(true);
-
-      // Input handlers (pointermove must be passive:false for preventDefault)
       document.addEventListener('pointerdown', beginTrack, { passive: true });
-      document.addEventListener('pointermove',  moveTrack,  { passive: false });
+      document.addEventListener('pointermove',  moveTrack,  { passive: true });
       document.addEventListener('pointerup',    endTrack,   { passive: true });
-      document.addEventListener('pointercancel', () => { tracking = null; document.body.style.touchAction = 'pan-y'; }, { passive: true });
+      document.addEventListener('pointercancel', () => { tracking = null; }, { passive: true });
       document.addEventListener('click', onClick);
       document.addEventListener('keydown', onKey);
     }
