@@ -23,17 +23,16 @@
 
       /* specials */
       --thanks-hold-ms: 3200;
-      --link-hold-ms: 10000;         /* legacy, not used now */
-      --nothing-extra-hold-ms: 1000;
-      --special-nothing-extra-hold-ms: 1800;
+      --nothing-extra-hold-ms: 1000;     /* default pause before fading “nothing” */
+      --special-nothing-extra-hold-ms: 2800; /* longer linger for “nothing” on first/last */
 
       /* middle lines faster fade-out */
       --middle-fade-out-mult: 0.75;
 
-      /* new: promo tuning */
-      --promo-link-hold-ms: 3500;    /* shorter time for hyperlinks */
-      --october-hold-ms: 600;        /* very quick blip for October 18-19 */
-      --promo-fade-out-mult: 0.6;    /* promos fade out faster */
+      /* promo tuning */
+      --promo-link-hold-ms: 3500;  /* shorter time for hyperlinks */
+      --october-hold-ms: 600;      /* quick blip for October 18-19 */
+      --promo-fade-out-mult: 0.6;  /* promos fade out faster */
 
       /* link styling (gray, no underline) */
       --link-color: #6b7280;
@@ -205,12 +204,11 @@
     const thanksHold       = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
     const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
     const specialNothingExtraHold =
-      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 1800;
+      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 2800;
 
     const middleFadeOutMult =
       parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.75;
 
-    // new promo vars
     const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 3500;
     const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 600;
     const promoFadeOutMult =
