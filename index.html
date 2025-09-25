@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NOTHING</title>
 
-  <!-- Speed up Google Fonts + load Roboto -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet" />
@@ -13,23 +12,32 @@
   <style>
     :root {
       /* base timings (ms) */
-      --fade-in-ms: 3000;            /* slower, true fade-in for ALL lines */
-      --fade-out-ms: 800;            /* fade-out base */
+      --fade-in-ms: 3000;
+      --fade-out-ms: 800;
       --hold-ms: 1200;
       --gap-ms: 200;
 
-      /* first line tweaks */
-      --first-hold-mult: 2;          /* first line visible 2x longer */
-      --first-fade-out-mult: 2;      /* first line fades out slower */
+      /* first/last line */
+      --first-hold-mult: 2;
+      --first-fade-out-mult: 2;
 
       /* specials */
-      --thanks-hold-ms: 3200;        /* linger on “Thanks for nothing.” */
-      --link-hold-ms: 10000;         /* linked promo items ~10s */
-      --nothing-extra-hold-ms: 1000; /* “nothing” stays 1s longer on fade-out */
+      --thanks-hold-ms: 3200;
+      --link-hold-ms: 10000;         /* legacy, not used now */
+      --nothing-extra-hold-ms: 1000;
+      --special-nothing-extra-hold-ms: 1800;
+
+      /* middle lines faster fade-out */
+      --middle-fade-out-mult: 0.75;
+
+      /* new: promo tuning */
+      --promo-link-hold-ms: 3500;    /* shorter time for hyperlinks */
+      --october-hold-ms: 600;        /* very quick blip for October 18-19 */
+      --promo-fade-out-mult: 0.6;    /* promos fade out faster */
 
       /* link styling (gray, no underline) */
-      --link-color: #6b7280;  /* gray-500 */
-      --link-hover: #111827;  /* gray-900 */
+      --link-color: #6b7280;
+      --link-hover: #111827;
     }
 
     html, body {
@@ -54,16 +62,14 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-      color: #000;  /* the fade-in is via opacity */
-      opacity: 0;   /* each line starts at 0, WAAPI animates to 1 */
+      color: #000;
+      opacity: 0;
     }
 
-    /* Token spans so we can fade parts independently on fade-out */
     .token { transition-property: opacity; }
     .rest  { opacity: 1; }
     .nothing { opacity: 1; }
 
-    /* Links: gray, no underline, clear hover/focus */
     #line a {
       color: var(--link-color);
       text-decoration: none;
@@ -87,10 +93,6 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    // Poem lines followed by three promo items:
-    // 1) AiOP 2025 NOTHING (link, gray, ~10s)
-    // 2) October 18-19 (no link, normal hold)
-    // 3) DAVIDDARTS.COM (link, gray, ~10s)
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -184,15 +186,13 @@
       `I’ve got nothing.`,
       `You are nothing.`,
       `Thanks for nothing.`,
-      // Promo sequence
-      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/' }, // link, ~10s
-      { text: 'October 18-19' }, // normal hold
-      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' }, // link, ~10s
+      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/' },
+      { text: 'October 18-19' },
+      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' },
     ];
 
     const el = document.getElementById('line');
 
-    // Timings from CSS vars
     const css = getComputedStyle(document.documentElement);
     const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 3000;
     const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
@@ -203,12 +203,21 @@
     const firstFadeOutMult = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
 
     const thanksHold       = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || (holdBase * 3);
-    const linkHold         = parseInt(css.getPropertyValue('--link-hold-ms'))          || 10000;
     const nothingExtraHold = parseInt(css.getPropertyValue('--nothing-extra-hold-ms')) || 1000;
+    const specialNothingExtraHold =
+      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 1800;
 
-    // Regex for tokenizing vs detection
-    const NOTHING_SPLIT = /(nothing)s?/gi; // tokenize "nothing"/"nothings"
-    const NOTHING_TEST  = /nothing/i;      // non-stateful detection
+    const middleFadeOutMult =
+      parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.75;
+
+    // new promo vars
+    const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 3500;
+    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 600;
+    const promoFadeOutMult =
+      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.6;
+
+    const NOTHING_SPLIT = /(nothing)s?/gi;
+    const NOTHING_TEST  = /nothing/i;
 
     const isObj = (item) => typeof item === 'object' && item !== null;
     const isLinkItem = (item) => isObj(item) && 'href' in item;
@@ -240,7 +249,6 @@
       return NOTHING_TEST.test(text);
     }
 
-    // Simple helper to run a one-off WAAPI animation and await its end
     function animateOnce(el, keyframes, options) {
       const anim = el.animate(keyframes, options);
       return new Promise(resolve => anim.addEventListener('finish', resolve, { once: true }));
@@ -253,35 +261,42 @@
       const isFirst  = i === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
       const isLink   = isLinkItem(item);
+      const isOctober = isObj(item) && item.text === 'October 18-19';
       const hasNothing = lineHasNothing(item);
-      const isMiddlePoemLine = !isFirst && !isThanks && !isLink; // your “other poem lines”
+      const isMiddlePoemLine = !isFirst && !isThanks && !isLink && !isOctober;
 
-      // Per-item durations
-      const fadeOutThis = isFirst ? Math.round(fadeOutMs * firstFadeOutMult) : fadeOutMs;
+      // Per-item fade-out duration
+      let fadeOutThis = fadeOutMs;
+      if (isFirst) fadeOutThis = Math.round(fadeOutMs * firstFadeOutMult);
+      else if (isMiddlePoemLine) fadeOutThis = Math.round(fadeOutMs * middleFadeOutMult);
+      else if (isLink || isOctober) fadeOutThis = Math.round(fadeOutMs * promoFadeOutMult);
 
-      // Hold: links and specials linger; middle poem lines hold = 0
-      const holdMs = isLink ? linkHold
+      // Per-item hold
+      const holdMs = isLink ? promoLinkHold
+                    : isOctober ? octoberHold
                     : isThanks ? thanksHold
                     : isFirst  ? Math.round(holdBase * firstHoldMult)
-                               : 0;
+                               : 0; // middle lines start fading immediately
 
-      // Pause between fading the non-"nothing" tokens and the "nothing" token
-      // Middle poem lines use 0 to make the fade-out immediate
-      const nothingPauseMs = (hasNothing && !isMiddlePoemLine) ? nothingExtraHold : 0;
+      // Pause between fading "rest" and fading "nothing"
+      const nothingPauseMs =
+        (hasNothing && (isFirst || isThanks))
+          ? specialNothingExtraHold
+          : 0;
 
-      // Render content (tokens for "nothing" lines)
+      // Render
       el.innerHTML = renderItemToHTML(item);
 
-      // Ensure starting opacity 0, then animate to 1 for EVERY line
+      // Fade in
       el.style.opacity = '0';
-      await Promise.resolve(); // microtask break
+      await Promise.resolve();
       await animateOnce(el, [{ opacity: 0 }, { opacity: 1 }], {
         duration: fadeInMs,
         easing: 'cubic-bezier(0.2, 0, 0, 1)',
         fill: 'forwards'
       });
 
-      // Prep token transitions for partial fade (if needed)
+      // Token setup (for partial fade)
       if (hasNothing) {
         el.querySelectorAll('.token').forEach(t => {
           t.style.transitionProperty = 'opacity';
@@ -291,23 +306,22 @@
         });
       }
 
-      // Hold the line (0 for middle lines)
+      // Hold
       if (holdMs > 0) {
         await new Promise(r => setTimeout(r, holdMs));
       }
 
       if (hasNothing) {
-        // Fade non-"nothing" first
+        // Fade non “nothing”
         el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
         if (nothingPauseMs > 0) {
           await new Promise(r => setTimeout(r, nothingPauseMs));
         }
-
-        // Then fade "nothing"
+        // Then fade “nothing”
         el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
         await new Promise(r => setTimeout(r, fadeOutThis + gap));
       } else {
-        // Fade entire container out
+        // Fade whole line
         await animateOnce(el, [{ opacity: 1 }, { opacity: 0 }], {
           duration: fadeOutThis,
           easing: 'ease-in-out',
@@ -316,12 +330,10 @@
         await new Promise(r => setTimeout(r, gap));
       }
 
-      // Next line
       i = (i + 1) % items.length;
       cycle();
     }
 
-    // Reduced motion
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const first = items[0];
       el.textContent = typeof first === 'string' ? first : first.text;
@@ -330,7 +342,6 @@
       cycle();
     }
 
-    // Favicon: white box with black outline, injected with cache-busting
     (function setFavicon() {
       const svg =
         `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
