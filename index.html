@@ -11,63 +11,71 @@
 
   <style>
     :root {
-      /* base timings (ms) */
-      --fade-in-ms: 3000;
-      --fade-out-ms: 800;
-      --hold-ms: 1200;
-      --gap-ms: 200;
+      /* Faster, pulsing timings (ms) */
+      --fade-in-ms: 900;              /* time to fade in */
+      --fade-out-ms: 700;             /* time to fade out */
+      --gap-ms: 0;                    /* no gaps at all */
 
-      /* first/last line */
-      --first-hold-mult: 1.15;          /* shorter full-text hold on first line */
-      --first-fade-out-mult: 2;
+      /* First/last: faster overall; “nothing” still lingers a touch */
+      --first-fade-out-mult: 1.1;     /* was 2; keep only slightly slower */
+      --thanks-fade-out-mult: 1.1;    /* symmetric with first line */
+      --special-nothing-extra-hold-ms: 650; /* shorter linger for “nothing” on first/last */
 
-      /* specials */
-      --thanks-hold-ms: 1800;           /* shorter full-text hold on last line */
-      --nothing-extra-hold-ms: 1000;    /* default pause before fading "nothing" */
-      --special-nothing-extra-hold-ms: 2800; /* long linger for “nothing” on first/last */
+      /* Middle lines: quick fade-out feel */
+      --middle-fade-out-mult: 0.7;
 
-      /* middles */
-      --middle-fade-out-mult: 0.75;     /* middle lines fade out a touch faster */
-
-      /* promos */
-      --promo-link-hold-ms: 3500;
-      --october-hold-ms: 600;
+      /* Promos at the end (kept short so pace stays up) */
+      --promo-link-hold-ms: 2000;     /* links linger, but not long */
+      --october-hold-ms: 500;         /* quick blip */
       --promo-fade-out-mult: 0.6;
 
-      /* manual navigation */
-      --resume-idle-ms: 4000;           /* resume autoplay after this idle */
-      --swipe-threshold-px: 35;         /* min horizontal movement to count */
-
-      /* links (gray, no underline) */
+      /* link styling */
       --link-color: #6b7280;
       --link-hover: #111827;
     }
 
-    /* Make the page non-scrollable and stop rubber-banding */
+    /* Non-scrollable, no rubber-band (iPhone-safe) */
     html, body {
       height: 100%;
       margin: 0;
       background: white;
       color: black;
-      overflow: hidden;            /* no page scroll */
-      overscroll-behavior: none;   /* block pull-to-refresh and bounce (iOS 16+) */
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     body {
-      position: fixed;             /* lock the viewport */
+      position: fixed;
       inset: 0;
-      height: 100dvh;              /* modern mobile-safe viewport height */
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      height: 100dvh;
+      display: grid;
+      place-items: center;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      touch-action: none;          /* disable default touch panning on iOS */
+      touch-action: none;          /* own the gesture */
       user-select: none;
       -webkit-user-select: none;
     }
 
-    #line {
+    /* Stage holds two stacked lines for crossfade */
+    #stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+
+    .line {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      opacity: 0; /* animated via WAAPI */
+      pointer-events: none; /* enabled only on the top line when needed */
+    }
+
+    .content {
       font-family: "Roboto", "Helvetica Neue", Arial, sans-serif;
       font-weight: 900;
       font-size: clamp(28px, 8vw, 64px);
@@ -75,37 +83,42 @@
       text-align: center;
       max-width: min(90vw, 1200px);
       color: #000;
-      opacity: 0; /* animated with WAAPI */
     }
 
+    /* Token spans for partial fade */
     .token { transition-property: opacity; }
     .rest  { opacity: 1; }
     .nothing { opacity: 1; }
 
-    #line a {
+    /* Links: gray, no underline */
+    .content a {
       color: var(--link-color);
       text-decoration: none;
       cursor: pointer;
+      pointer-events: auto; /* allow link clicks */
     }
-    #line a:hover,
-    #line a:focus-visible {
+    .content a:hover,
+    .content a:focus-visible {
       color: var(--link-hover);
     }
-    #line a:focus-visible {
+    .content a:focus-visible {
       outline: 2px solid currentColor;
       outline-offset: 4px;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #line, .token { transition: none !important; opacity: 1 !important; }
+      .line, .token { transition: none !important; opacity: 1 !important; }
     }
   </style>
 </head>
 <body>
-  <div id="line" aria-live="polite"></div>
+  <div id="stage" aria-live="polite">
+    <div class="line" id="lineA"><div class="content"></div></div>
+    <div class="line" id="lineB"><div class="content"></div></div>
+  </div>
 
   <script>
-    // Content
+    /* ------------------ Content ------------------ */
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -199,39 +212,32 @@
       `I’ve got nothing.`,
       `You are nothing.`,
       `Thanks for nothing.`,
+      // Promos
       { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/' },
       { text: 'October 18-19' },
       { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' },
     ];
 
-    const el = document.getElementById('line');
+    /* ------------------ Setup ------------------ */
+    const stage = document.getElementById('stage');
+    const lineA = document.getElementById('lineA');
+    const lineB = document.getElementById('lineB');
+    const buffers = [lineA, lineB];
 
-    // CSS vars
     const css = getComputedStyle(document.documentElement);
-    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 3000;
-    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 800;
-    const holdBase  = parseInt(css.getPropertyValue('--hold-ms'))     || 1200;
-    const gap       = parseInt(css.getPropertyValue('--gap-ms'))      || 200;
+    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 900;
+    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 700;
+    const middleFadeOutMult = parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.7;
+    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult'))  || 1.1;
+    const thanksFadeOutMult = parseFloat(css.getPropertyValue('--thanks-fade-out-mult')) || 1.1;
 
-    const firstHoldMult    = parseFloat(css.getPropertyValue('--first-hold-mult'))     || 1.15;
-    const firstFadeOutMult = parseFloat(css.getPropertyValue('--first-fade-out-mult')) || 2;
+    const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 2000;
+    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 500;
+    const promoFadeOutMult = parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.6;
 
-    const thanksHold       = parseInt(css.getPropertyValue('--thanks-hold-ms'))        || 1800;
     const specialNothingExtraHold =
-      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 2800;
+      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 650;
 
-    const middleFadeOutMult =
-      parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.75;
-
-    const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 3500;
-    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 600;
-    const promoFadeOutMult =
-      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.6;
-
-    const resumeIdleMs  = parseInt(css.getPropertyValue('--resume-idle-ms')) || 4000;
-    const swipeThresholdPx = parseInt(css.getPropertyValue('--swipe-threshold-px')) || 35;
-
-    // Token logic
     const NOTHING_SPLIT = /(nothing)s?/gi;
     const NOTHING_TEST  = /nothing/i;
 
@@ -240,11 +246,11 @@
 
     function renderItemToHTML(item) {
       if (isLinkItem(item)) {
-        return `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
+        return `<div class="content"><a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a></div>`;
       }
       const text = isObj(item) ? item.text : String(item);
       const parts = text.split(NOTHING_SPLIT);
-      let html = '';
+      let html = '<div class="content">';
       for (let idx = 0; idx < parts.length; idx++) {
         const part = parts[idx];
         if (!part) continue;
@@ -256,6 +262,7 @@
           html += `<span class="token rest">${part}</span>`;
         }
       }
+      html += '</div>';
       return html;
     }
 
@@ -265,25 +272,21 @@
       return NOTHING_TEST.test(text);
     }
 
-    // Animation helper
     function animateOnce(el, keyframes, options) {
       const anim = el.animate(keyframes, options);
-      return new Promise(resolve => anim.addEventListener('finish', resolve, { once: true }));
+      return { anim, done: new Promise(res => anim.addEventListener('finish', res, { once: true })) };
     }
 
-    // State and scheduling
+    /* ------------------ Crossfade engine ------------------ */
     let i = 0;
+    let active = 0;            // which buffer will be used for the next fade-in
     let autoplay = true;
     let timers = new Set();
     let resumeTimer = null;
-    let cycling = false;
     let resumeAdvanceNext = false;
 
     function schedule(fn, ms) {
-      const id = setTimeout(() => {
-        timers.delete(id);
-        fn();
-      }, ms);
+      const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
       timers.add(id);
       return id;
     }
@@ -293,9 +296,24 @@
     }
     function cancelAllAnimations() {
       try {
-        const list = (document.getAnimations && document.getAnimations()) || [];
-        list.forEach(a => { try { a.cancel(); } catch {} });
+        (document.getAnimations?.() || []).forEach(a => { try { a.cancel(); } catch {} });
       } catch {}
+    }
+
+    function holdForItem(item) {
+      if (isLinkItem(item)) return promoLinkHold;
+      if (isObj(item) && item.text === 'October 18-19') return octoberHold;
+      return 0; // POEM LINES: no hold at all
+    }
+
+    function fadeOutDuration(idx, item) {
+      const isFirst = idx === 0;
+      const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
+      const isPromo = isObj(item);
+      if (isPromo) return Math.round(fadeOutMs * promoFadeOutMult);
+      if (isFirst)  return Math.round(fadeOutMs * firstFadeOutMult);
+      if (isThanks) return Math.round(fadeOutMs * thanksFadeOutMult);
+      return Math.round(fadeOutMs * middleFadeOutMult);
     }
 
     function pauseAndScheduleResume({ advanceOnResume = true } = {}) {
@@ -305,107 +323,136 @@
       resumeTimer = setTimeout(() => {
         autoplay = true;
         if (resumeAdvanceNext) {
-          i = (i + 1) % items.length;
+          i = (i + 1) % items.length; // start from next line after the one user last saw
           resumeAdvanceNext = false;
         }
-        cycle(true);
-      }, resumeIdleMs);
+        // restart crossfade loop from current index
+        startLine(i);
+      }, 4000); // matches --resume-idle-ms logic from earlier versions
     }
 
-    async function showIndex(idx, { skipHoldForMiddle = false } = {}) {
-      const item = items[idx];
-      const isFirst  = idx === 0;
-      const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
-      const isLink   = isLinkItem(item);
-      const isOctober = isObj(item) && item.text === 'October 18-19';
-      const hasNothing = lineHasNothing(item);
-      const isMiddlePoemLine = !isFirst && !isThanks && !isLink && !isOctober;
+    function startLine(index) {
+      if (!autoplay) return;
 
-      // Per-item fade-out duration
-      const fadeOutBase = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-out-ms')) || 800;
-      let fadeOutThis = fadeOutBase;
-      if (isFirst) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--first-fade-out-mult')) || 2));
-      else if (isMiddlePoemLine) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--middle-fade-out-mult')) || 0.75));
-      else if (isLink || isOctober) fadeOutThis = Math.round(fadeOutBase * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--promo-fade-out-mult')) || 0.6));
+      const item = items[index];
+      const nextBuf = buffers[active];
+      const otherBuf = buffers[1 - active];
 
-      // Per-item hold
-      const holdMs = isLink ? promoLinkHold
-                    : isOctober ? octoberHold
-                    : isThanks ? thanksHold
-                    : isFirst  ? Math.round(holdBase * firstHoldMult)
-                               : 0;
+      // Render and bring next buffer on top for interaction
+      nextBuf.innerHTML = renderItemToHTML(item);
+      nextBuf.style.pointerEvents = 'auto';
+      otherBuf.style.pointerEvents = 'none';
 
-      const nothingPauseMs = (hasNothing && (isFirst || isThanks))
-        ? specialNothingExtraHold
-        : 0;
+      // Reset opacity instantly before animating
+      nextBuf.style.opacity = '0';
 
-      // Render
-      el.innerHTML = renderItemToHTML(item);
-
-      // Fade in
-      el.style.opacity = '0';
-      await Promise.resolve();
-      await animateOnce(el, [{ opacity: 0 }, { opacity: 1 }], {
+      // Fade-in
+      animateOnce(nextBuf, [{ opacity: 0 }, { opacity: 1 }], {
         duration: fadeInMs,
         easing: 'cubic-bezier(0.2, 0, 0, 1)',
         fill: 'forwards'
       });
 
-      // Token setup for partial fade
-      if (hasNothing) {
-        el.querySelectorAll('.token').forEach(t => {
-          t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'ease-in-out';
-          t.style.transitionDuration = `${fadeOutThis}ms`;
-          t.style.opacity = '1';
-        });
-      }
+      // As soon as this line becomes fully visible, immediately:
+      // 1) begin its fade-out (tokenized for "nothing" lines)
+      // 2) start the NEXT line's fade-in on the other buffer (crossfade)
+      const hasNothing = lineHasNothing(item);
+      const isFirst = index === 0;
+      const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
+      const thisFadeOut = fadeOutDuration(index, item);
+      const holdMs = holdForItem(item); // promos only
 
-      // Hold (skip for middles on manual jumps)
-      if (holdMs > 0 && !(skipHoldForMiddle && isMiddlePoemLine)) {
-        await new Promise(resolve => { schedule(resolve, holdMs); });
-      }
+      // Schedule the next line's start exactly when this hits full opacity + any promo hold
+      schedule(() => {
+        if (!autoplay) return;
+        const nextIndex = (index + 1) % items.length;
+        active = 1 - active; // swap buffer for the next fade-in
+        startLine(nextIndex);
+      }, fadeInMs + holdMs);
 
-      // Fade out
-      if (hasNothing) {
-        el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
-        if (nothingPauseMs > 0) {
-          await new Promise(resolve => { schedule(resolve, nothingPauseMs); });
+      // Schedule this line's fade-out behavior (starts immediately after fade-in)
+      schedule(() => {
+        if (hasNothing) {
+          // Set transitions on tokens
+          const tokens = nextBuf.querySelectorAll('.token');
+          tokens.forEach(t => {
+            t.style.transitionProperty = 'opacity';
+            t.style.transitionTimingFunction = 'ease-in-out';
+            t.style.transitionDuration = `${thisFadeOut}ms`;
+            t.style.opacity = '1';
+          });
+
+          // 1) Fade non-"nothing" immediately
+          nextBuf.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
+
+          // 2) Short linger for the word "nothing" on first/last only
+          const extraPause = (isFirst || isThanks) ? specialNothingExtraHold : 0;
+
+          schedule(() => {
+            nextBuf.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
+          }, extraPause);
+
+        } else {
+          // Whole line fades out
+          animateOnce(nextBuf, [{ opacity: 1 }, { opacity: 0 }], {
+            duration: thisFadeOut,
+            easing: 'ease-in-out',
+            fill: 'forwards'
+          });
         }
-        el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
-        await new Promise(resolve => { schedule(resolve, fadeOutThis + gap); });
-      } else {
-        await animateOnce(el, [{ opacity: 1 }, { opacity: 0 }], {
-          duration: fadeOutThis,
-          easing: 'ease-in-out',
-          fill: 'forwards'
-        });
-        await new Promise(resolve => { schedule(resolve, gap); });
-      }
+      }, fadeInMs); // start fade-out immediately when fully visible
     }
 
-    async function cycle(forceStart = false) {
-      if (!forceStart && (!autoplay || cycling)) return;
-      cycling = true;
-      while (autoplay) {
-        clearTimers();
-        await showIndex(i);
-        i = (i + 1) % items.length;
-      }
-      cycling = false;
-    }
+    /* ------------------ Manual navigation (kept) ------------------ */
+    function clearAll() { clearTimers(); cancelAllAnimations(); }
 
     function jumpBy(step) {
+      // Pause autoplay, schedule resume (and advance to next when resuming)
       pauseAndScheduleResume({ advanceOnResume: true });
-      clearTimers();
-      cancelAllAnimations();
 
+      // Cancel current activity
+      clearAll();
+
+      // Show requested line now (single render; no scheduling of the next)
       i = (i + step + items.length) % items.length;
-      el.style.opacity = '0';
-      showIndex(i, { skipHoldForMiddle: true });
+      const buf = buffers[active];
+      const other = buffers[1 - active];
+      buf.innerHTML = renderItemToHTML(items[i]);
+      buf.style.pointerEvents = 'auto';
+      other.style.pointerEvents = 'none';
+      buf.style.opacity = '0';
+      animateOnce(buf, [{ opacity: 0 }, { opacity: 1 }], {
+        duration: fadeInMs,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+        fill: 'forwards'
+      });
+      // Begin its fade-out immediately (keeps the pulsing feel during manual browsing)
+      const hasNothing = lineHasNothing(items[i]);
+      const thisFadeOut = fadeOutDuration(i, items[i]);
+      schedule(() => {
+        if (hasNothing) {
+          const tokens = buf.querySelectorAll('.token');
+          tokens.forEach(t => {
+            t.style.transitionProperty = 'opacity';
+            t.style.transitionTimingFunction = 'ease-in-out';
+            t.style.transitionDuration = `${thisFadeOut}ms`;
+            t.style.opacity = '1';
+          });
+          buf.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
+          schedule(() => {
+            buf.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
+          }, (i === 0 || (typeof items[i] === 'string' && items[i] === 'Thanks for nothing.')) ? specialNothingExtraHold : 0);
+        } else {
+          animateOnce(buf, [{ opacity: 1 }, { opacity: 0 }], {
+            duration: thisFadeOut,
+            easing: 'ease-in-out',
+            fill: 'forwards'
+          });
+        }
+      }, fadeInMs);
     }
 
-    // Swipe and click handlers
+    // Swipe (horizontal) + click
     let tracking = null;
     const AXIS_LOCK_RATIO = 1.2;
     const MIN_VELOCITY = 0.35; // px/ms
@@ -426,7 +473,6 @@
       if (!tracking || e.pointerId !== tracking.id) return;
       tracking.lastX = e.clientX;
       tracking.lastY = e.clientY;
-      // With touch-action:none the browser will not scroll. No preventDefault needed.
     }
     function endTrack(e) {
       if (!tracking || e.pointerId !== tracking.id) return;
@@ -437,7 +483,7 @@
       const vx = ax / dt;
 
       const isHorizontal = ax > ay * AXIS_LOCK_RATIO;
-      const passed = ax > swipeThresholdPx || vx > MIN_VELOCITY;
+      const passed = ax > 35 || vx > MIN_VELOCITY;
 
       const link = e.target.closest && e.target.closest('a');
       tracking = null;
@@ -453,31 +499,35 @@
       if (link) return;
       jumpBy(+1);
     }
-
     function onKey(e) {
       if (e.key === 'ArrowRight') jumpBy(+1);
       else if (e.key === 'ArrowLeft') jumpBy(-1);
     }
 
-    // Block stray touchmove on older iOS that ignores touch-action on <body>
+    // Block stray touchmove on old iOS (extra safety)
     document.addEventListener('touchmove', (e) => {
       const onLink = e.target.closest && e.target.closest('a');
       if (!onLink) e.preventDefault();
     }, { passive: false });
 
+    /* ------------------ Kickoff ------------------ */
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const first = items[0];
-      el.textContent = typeof first === 'string' ? first : first.text;
-      el.style.opacity = '1';
+      // Reduced motion: show first line and stop
+      const buf = buffers[active];
+      buf.innerHTML = renderItemToHTML(items[0]);
+      buf.style.opacity = '1';
     } else {
-      cycle(true);
-      document.addEventListener('pointerdown', beginTrack, { passive: true });
-      document.addEventListener('pointermove',  moveTrack,  { passive: true });
-      document.addEventListener('pointerup',    endTrack,   { passive: true });
-      document.addEventListener('pointercancel', () => { tracking = null; }, { passive: true });
-      document.addEventListener('click', onClick);
-      document.addEventListener('keydown', onKey);
+      // Start the crossfading pulse from the beginning
+      startLine(i);
     }
+
+    // Input handlers
+    document.addEventListener('pointerdown', beginTrack, { passive: true });
+    document.addEventListener('pointermove',  moveTrack,  { passive: true });
+    document.addEventListener('pointerup',    endTrack,   { passive: true });
+    document.addEventListener('pointercancel', () => { tracking = null; }, { passive: true });
+    document.addEventListener('click', onClick);
+    document.addEventListener('keydown', onKey);
 
     // Favicon
     (function setFavicon() {
