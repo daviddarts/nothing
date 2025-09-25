@@ -11,25 +11,25 @@
 
   <style>
     :root {
-      /* Faster, single-line pulse (ms) */
-      --fade-in-ms: 1200;               /* readable but quick */
-      --fade-out-ms: 600;               /* crisp exit */
-      --gap-ms: 0;                      /* no white gap between lines */
+      /* Slow, soft “breathing” (ms) */
+      --fade-in-ms: 2600;                 /* white → gray → black */
+      --fade-out-ms: 1800;                /* black → gray → white */
+      --gap-ms: 0;                        /* no blank gap between lines */
 
-      /* No holds for poem lines; we’ll keep promos brief */
-      --hold-ms: 0;                     /* base hold (poem lines use 0) */
+      /* Holds: middles = 0 (pulse), first/last keep a brief full-line hold */
+      --first-hold-ms: 700;               /* first line’s full text hold before fading */
+      --thanks-hold-ms: 900;              /* last line’s full text hold before fading */
 
-      /* first/last tuning */
-      --first-fade-out-mult: 1.0;       /* same fade speed as others */
-      --special-nothing-extra-hold-ms: 450; /* shorter linger for “nothing” on first/last */
+      /* First/last: “nothing” fades slower (no pause, just a longer fade) */
+      --nothing-fade-mult-first-last: 1.8;
 
-      /* middles a touch quicker on exit */
-      --middle-fade-out-mult: 0.8;
+      /* Middles: slightly quicker exit feel */
+      --middle-fade-out-mult: 0.85;
 
-      /* promos (end cards) — keep short to preserve pace */
+      /* Promos (end cards) kept short so pace stays up */
       --promo-link-hold-ms: 2000;
-      --october-hold-ms: 500;
-      --promo-fade-out-mult: 0.6;
+      --october-hold-ms: 600;
+      --promo-fade-out-mult: 0.7;
 
       /* link styling */
       --link-color: #6b7280;
@@ -66,30 +66,24 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-      color: #000;
-      opacity: 0; /* animated with WAAPI */
+      color: #000;                 /* opacity gives the gray ramp */
+      opacity: 0;                  /* animated with WAAPI */
     }
 
-    /* Token spans for partial fade on “nothing” lines */
+    /* Token spans (used on first/last only) */
     .token { transition-property: opacity; }
     .rest  { opacity: 1; }
     .nothing { opacity: 1; }
 
-    /* Links: gray, no underline */
+    /* Links */
     #line a {
       color: var(--link-color);
       text-decoration: none;
       cursor: pointer;
       pointer-events: auto;
     }
-    #line a:hover,
-    #line a:focus-visible {
-      color: var(--link-hover);
-    }
-    #line a:focus-visible {
-      outline: 2px solid currentColor;
-      outline-offset: 4px;
-    }
+    #line a:hover, #line a:focus-visible { color: var(--link-hover); }
+    #line a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 
     @media (prefers-reduced-motion: reduce) {
       #line, .token { transition: none !important; opacity: 1 !important; }
@@ -100,7 +94,7 @@
   <div id="line" aria-live="polite"></div>
 
   <script>
-    /* --------------- Content --------------- */
+    /* ---------------- Content ---------------- */
     const items = [
       `Nothing to see here.`,
       `Less than nothing.`,
@@ -202,25 +196,25 @@
 
     const el = document.getElementById('line');
 
-    /* --------------- Timings --------------- */
+    /* ---------------- Timings ---------------- */
     const css = getComputedStyle(document.documentElement);
-    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 1200;
-    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 600;
+    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 2600;
+    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 1800;
     const gap       = parseInt(css.getPropertyValue('--gap-ms'))      || 0;
 
-    const firstFadeOutMult  = parseFloat(css.getPropertyValue('--first-fade-out-mult'))  || 1.0;
-    const middleFadeOutMult = parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.8;
+    const firstHoldMs  = parseInt(css.getPropertyValue('--first-hold-ms'))  || 700;
+    const thanksHoldMs = parseInt(css.getPropertyValue('--thanks-hold-ms')) || 900;
 
-    const specialNothingExtraHold =
-      parseInt(css.getPropertyValue('--special-nothing-extra-hold-ms')) || 450;
+    const middleFadeOutMult = parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.85;
+    const nothingFadeMultFirstLast = parseFloat(css.getPropertyValue('--nothing-fade-mult-first-last')) || 1.8;
 
     // promos
     const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 2000;
-    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 500;
+    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 600;
     const promoFadeOutMult =
-      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.6;
+      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.7;
 
-    /* --------------- Tokenization --------------- */
+    /* ---------------- Tokenization ---------------- */
     const NOTHING_SPLIT = /(nothing)s?/gi;
     const NOTHING_TEST  = /nothing/i;
 
@@ -254,7 +248,7 @@
       return NOTHING_TEST.test(text);
     }
 
-    /* --------------- Helpers --------------- */
+    /* ---------------- Helpers ---------------- */
     function animateOnce(el, keyframes, options) {
       const anim = el.animate(keyframes, options);
       return new Promise(resolve => anim.addEventListener('finish', resolve, { once: true }));
@@ -272,10 +266,7 @@
       timers.add(id);
       return id;
     }
-    function clearTimers() {
-      timers.forEach(id => clearTimeout(id));
-      timers.clear();
-    }
+    function clearTimers() { timers.forEach(id => clearTimeout(id)); timers.clear(); }
     function cancelAllAnimations() {
       try { (document.getAnimations?.() || []).forEach(a => a.cancel()); } catch {}
     }
@@ -284,53 +275,45 @@
       autoplay = false;
       resumeAdvanceNext = advanceOnResume;
       if (resumeTimer) clearTimeout(resumeTimer);
-      // resume after idle (4s feels good at this faster pace)
       resumeTimer = setTimeout(() => {
         autoplay = true;
-        if (resumeAdvanceNext) {
-          i = (i + 1) % items.length; // avoid repeating the same line
-          resumeAdvanceNext = false;
-        }
+        if (resumeAdvanceNext) { i = (i + 1) % items.length; resumeAdvanceNext = false; }
         cycle(true);
       }, 4000);
     }
 
-    function holdForItem(item) {
+    function holdForItem(idx, item) {
       if (isLinkItem(item)) return promoLinkHold;
       if (isObj(item) && item.text === 'October 18-19') return octoberHold;
-      return 0; // poem lines: no hold at all
+      if (idx === 0) return firstHoldMs;                            // first line small hold
+      if (typeof item === 'string' && item === 'Thanks for nothing.') return thanksHoldMs; // last line small hold
+      return 0; // middle lines
     }
 
     function fadeOutDuration(idx, item, isMiddlePoemLine) {
       if (isLinkItem(item) || (isObj(item) && item.text === 'October 18-19')) {
         return Math.round(fadeOutMs * promoFadeOutMult);
       }
-      if (idx === 0) return Math.round(fadeOutMs * firstFadeOutMult);
       if (isMiddlePoemLine) return Math.round(fadeOutMs * middleFadeOutMult);
-      return fadeOutMs; // default
+      return fadeOutMs; // first/last and any other non-promo
     }
 
-    /* --------------- Core show/cycle --------------- */
+    /* ---------------- Core show/cycle ---------------- */
     async function showIndex(idx, { skipHoldForMiddle = false } = {}) {
       const item = items[idx];
       const isFirst  = idx === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
       const isLink   = isLinkItem(item);
       const isOctober = isObj(item) && item.text === 'October 18-19';
-      const hasNothing = lineHasNothing(item);
       const isMiddlePoemLine = !isFirst && !isThanks && !isLink && !isOctober;
 
+      const holdMs = holdForItem(idx, item);
       const fadeOutThis = fadeOutDuration(idx, item, isMiddlePoemLine);
-      const holdMs = isLink ? promoLinkHold
-                    : isOctober ? octoberHold
-                    : 0; // poem lines: no hold
-
-      const nothingPauseMs = (hasNothing && (isFirst || isThanks)) ? specialNothingExtraHold : 0;
 
       // Render
       el.innerHTML = renderItemToHTML(item);
 
-      // Fade in
+      // Fade in (white→gray→black)
       el.style.opacity = '0';
       await Promise.resolve();
       await animateOnce(el, [{ opacity: 0 }, { opacity: 1 }], {
@@ -339,36 +322,49 @@
         fill: 'forwards'
       });
 
-      // Token setup for partial fade
-      if (hasNothing) {
-        el.querySelectorAll('.token').forEach(t => {
-          t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'ease-in-out';
-          t.style.transitionDuration = `${fadeOutThis}ms`;
-          t.style.opacity = '1';
-        });
-      }
-
-      // (Promos only) tiny hold
+      // Brief hold only for first/last (if configured)
       if (holdMs > 0 && !(skipHoldForMiddle && isMiddlePoemLine)) {
         await new Promise(resolve => { schedule(resolve, holdMs); });
       }
 
-      // Fade out immediately after fade-in (poem lines), with stagger for “nothing”
-      if (hasNothing) {
-        el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
-        if (nothingPauseMs > 0) {
-          await new Promise(resolve => { schedule(resolve, nothingPauseMs); });
-        }
-        el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
-        await new Promise(resolve => { schedule(resolve, fadeOutThis + gap); });
-      } else {
+      // Fade out (black→gray→white)
+      if (isFirst || isThanks) {
+        // Special: “rest” fades at base speed; “nothing” starts immediately but fades slower (no pause)
+        const rest = el.querySelectorAll('.rest');
+        const nothing = el.querySelectorAll('.nothing');
+
+        // set transition durations
+        rest.forEach(t => {
+          t.style.transitionProperty = 'opacity';
+          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionDuration = `${fadeOutThis}ms`;
+          t.style.opacity = '0';
+        });
+        nothing.forEach(t => {
+          t.style.transitionProperty = 'opacity';
+          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionDuration = `${Math.round(fadeOutThis * nothingFadeMultFirstLast)}ms`;
+          t.style.opacity = '0';
+        });
+
+        // wait for the longer (“nothing”) fade to complete
+        await new Promise(resolve => { schedule(resolve, Math.round(fadeOutThis * nothingFadeMultFirstLast) + gap); });
+      } else if (!isLink && !isOctober) {
+        // Middle poem line: fade the whole container (no token effect)
         await animateOnce(el, [{ opacity: 1 }, { opacity: 0 }], {
           duration: fadeOutThis,
           easing: 'ease-in-out',
           fill: 'forwards'
         });
-        if (gap > 0) { await new Promise(resolve => { schedule(resolve, gap); }); }
+        if (gap > 0) await new Promise(resolve => { schedule(resolve, gap); });
+      } else {
+        // Promos: quick hold already applied; fade out whole line
+        await animateOnce(el, [{ opacity: 1 }, { opacity: 0 }], {
+          duration: fadeOutThis,
+          easing: 'ease-in-out',
+          fill: 'forwards'
+        });
+        if (gap > 0) await new Promise(resolve => { schedule(resolve, gap); });
       }
     }
 
@@ -378,25 +374,23 @@
       while (autoplay) {
         clearTimers(); // safety between lines
         await showIndex(i);
-        i = (i + 1) % items.length;
-        // start next line immediately—no blank gap
+        i = (i + 1) % items.length; // immediately proceed (no blank gap)
       }
       cycling = false;
     }
 
-    /* --------------- Manual navigation --------------- */
+    /* ---------------- Manual navigation ---------------- */
     function jumpBy(step) {
-      pauseAndScheduleResume({ advanceOnResume: true }); // resume from next line
+      pauseAndScheduleResume({ advanceOnResume: true });
       clearTimers();
       cancelAllAnimations();
 
       i = (i + step + items.length) % items.length;
       el.style.opacity = '0';
-      // show selected line (poem lines still have no hold)
       showIndex(i, { skipHoldForMiddle: true });
     }
 
-    // Swipe/click handlers (horizontal-only; links still clickable)
+    // Swipe/click (horizontal), links still clickable
     let tracking = null;
     const AXIS_LOCK_RATIO = 1.2;
     const MIN_VELOCITY = 0.35; // px/ms
@@ -405,57 +399,39 @@
     function now() { return performance.now(); }
     function beginTrack(e) {
       if (tracking) return;
-      tracking = {
-        id: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        lastX: e.clientX,
-        lastY: e.clientY,
-        startT: now()
-      };
+      tracking = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, startT: now() };
     }
     function moveTrack(e) {
       if (!tracking || e.pointerId !== tracking.id) return;
-      tracking.lastX = e.clientX;
-      tracking.lastY = e.clientY;
+      tracking.lastX = e.clientX; tracking.lastY = e.clientY;
     }
     function endTrack(e) {
       if (!tracking || e.pointerId !== tracking.id) return;
       const dt = Math.max(1, now() - tracking.startT);
-      const dx = tracking.lastX - tracking.startX;
-      const dy = tracking.lastY - tracking.startY;
+      const dx = tracking.lastX - tracking.startX, dy = tracking.lastY - tracking.startY;
       const ax = Math.abs(dx), ay = Math.abs(dy);
       const vx = ax / dt;
-
       const isHorizontal = ax > ay * AXIS_LOCK_RATIO;
       const passed = ax > SWIPE_PX || vx > MIN_VELOCITY;
-
       const link = e.target.closest && e.target.closest('a');
       tracking = null;
-
       if (link) return;
-      if (isHorizontal && passed) {
-        jumpBy(dx < 0 ? +1 : -1);
-      }
+      if (isHorizontal && passed) jumpBy(dx < 0 ? +1 : -1);
     }
-
     function onClick(e) {
       const link = e.target.closest && e.target.closest('a');
       if (link) return;
       jumpBy(+1);
     }
-    function onKey(e) {
-      if (e.key === 'ArrowRight') jumpBy(+1);
-      else if (e.key === 'ArrowLeft') jumpBy(-1);
-    }
+    function onKey(e) { if (e.key === 'ArrowRight') jumpBy(+1); else if (e.key === 'ArrowLeft') jumpBy(-1); }
 
-    // Older iOS: block stray page scroll
+    // Older iOS: belt-and-suspenders scroll block
     document.addEventListener('touchmove', (e) => {
       const onLink = e.target.closest && e.target.closest('a');
       if (!onLink) e.preventDefault();
     }, { passive: false });
 
-    /* --------------- Kickoff --------------- */
+    /* ---------------- Kickoff ---------------- */
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       el.textContent = typeof items[0] === 'string' ? items[0] : items[0].text;
       el.style.opacity = '1';
