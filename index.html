@@ -254,13 +254,20 @@
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
       const isLink   = isLinkItem(item);
       const hasNothing = lineHasNothing(item);
+      const isMiddlePoemLine = !isFirst && !isThanks && !isLink; // your “other poem lines”
 
       // Per-item durations
       const fadeOutThis = isFirst ? Math.round(fadeOutMs * firstFadeOutMult) : fadeOutMs;
+
+      // Hold: links and specials linger; middle poem lines hold = 0
       const holdMs = isLink ? linkHold
                     : isThanks ? thanksHold
                     : isFirst  ? Math.round(holdBase * firstHoldMult)
-                               : holdBase;
+                               : 0;
+
+      // Pause between fading the non-"nothing" tokens and the "nothing" token
+      // Middle poem lines use 0 to make the fade-out immediate
+      const nothingPauseMs = (hasNothing && !isMiddlePoemLine) ? nothingExtraHold : 0;
 
       // Render content (tokens for "nothing" lines)
       el.innerHTML = renderItemToHTML(item);
@@ -284,13 +291,17 @@
         });
       }
 
-      // Hold the line
-      await new Promise(r => setTimeout(r, holdMs));
+      // Hold the line (0 for middle lines)
+      if (holdMs > 0) {
+        await new Promise(r => setTimeout(r, holdMs));
+      }
 
       if (hasNothing) {
         // Fade non-"nothing" first
         el.querySelectorAll('.rest').forEach(t => t.style.opacity = '0');
-        await new Promise(r => setTimeout(r, nothingExtraHold));
+        if (nothingPauseMs > 0) {
+          await new Promise(r => setTimeout(r, nothingPauseMs));
+        }
 
         // Then fade "nothing"
         el.querySelectorAll('.nothing').forEach(t => t.style.opacity = '0');
