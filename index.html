@@ -17,6 +17,9 @@
       --gap-ms: 0;                        /* no blank gap between lines */
       --peak-opacity: 0.88;               /* < 1.0 = peak is dark gray, not black */
 
+      /* Stanza breath on white */
+      --stanza-gap-ms: 900;               /* white hold for blank lines between stanzas */
+
       /* Holds: middles = 0 (pulse), first/last keep a brief full-line hold */
       --first-hold-ms: 700;               /* first line hold before fading */
       --thanks-hold-ms: 900;              /* last line hold before fading */
@@ -40,7 +43,6 @@
       --link-hover: #111827;
     }
 
-    /* Non-scrollable, iPhone-safe */
     html, body {
       height: 100%;
       margin: 0;
@@ -58,7 +60,7 @@
       place-items: center;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      touch-action: none;          /* own the gesture */
+      touch-action: none;
       user-select: none;
       -webkit-user-select: none;
     }
@@ -70,16 +72,14 @@
       line-height: 1.15;
       text-align: center;
       max-width: min(90vw, 1200px);
-      color: #000;                 /* opacity gives the gray ramp */
-      opacity: 0;                  /* animated with WAAPI */
+      color: #000;
+      opacity: 0;
     }
 
-    /* Token spans (used on first/last only) */
     .token { transition-property: opacity; }
     .rest  { opacity: 1; }
     .nothing { opacity: 1; }
 
-    /* Links */
     #line a {
       color: var(--link-color);
       text-decoration: none;
@@ -99,35 +99,33 @@
 
   <script>
     /* ---------------- Content ---------------- */
+    const BREAK = { break: true }; // stanza separator → white hold
+
     const items = [
+      // Stanza 1
       `Nothing to see here.`,
       `Less than nothing.`,
       `A whole lotta nothing.`,
       `A big fat nothingburger.`,
-      `Nothing new under the sun.`,
       `Nothing but dead air.`,
-      `Nothing but net.`,
-      `This is nothing new.`,
-      `Nothing special.`,
       `Nothing to write home about.`,
-      `I’ve got nothing to do.`,
-      `Nothing to wear.`,
-      `Nothing fancy.`,
-      `Nothing in particular.`,
-      `Nothing much.`,
       `Practically nothing.`,
       `I won’t settle for nothing.`,
-      `Something out of nothing?`,
+      BREAK,
+
+      // Stanza 2
+      `Make something out of nothing?`,
+      `Nothing ventured, nothing gained.`,
       `Leave nothing to chance.`,
-      `Nothing to lose.`,
-      `Nothing to complain about.`,
-      `Think nothing of it.`,
+      `I have nothing to lose.`,
       `Next to nothing.`,
       `Close to nothing.`,
       `Better than nothing.`,
-      `Nothing ventured, nothing gained.`,
       `Leave nothing on the table.`,
       `Accept nothing less.`,
+      BREAK,
+
+      // Stanza 3
       `There’s nothing to it.`,
       `Nothing compares.`,
       `Sweet nothings.`,
@@ -136,341 +134,8 @@
       `Nothing to sneeze at.`,
       `Nothing else matters.`,
       `Nothing but the best.`,
-      `Nothing can stop us.`,
-      `Nothing can come between us.`,
       `Nothing but blue skies.`,
+      `Nothing can stop us.`,
       `There’s nothing like it.`,
-      `Nothing can go wrong.`,
-      `All or nothing.`,
-      `I will stop at nothing.`,
-      `Double or nothing.`,
-      `Nothing worth having comes easy.`,
-      `Much ado about nothing.`,
-      `Nothing of the sort.`,
-      `Nothing to worry about.`,
-      `Think nothing of it.`,
-      `Nothing will come of it.`,
-      `Make nothing of it.`,
-      `It signifies nothing.`,
-      `You have nothing to fear.`,
-      `There’s nothing going on.`,
-      `Have you nothing to say?`,
-      `Nothing could be further from the truth.`,
-      `I’ve got nothing to gain.`,
-      `Nothing to add.`,
-      `Nothing to prove.`,
-      `Nothing to declare.`,
-      `Nothing to hide.`,
-      `Nothing to report.`,
-      `I’ve done nothing to regret.`,
-      `Time to say nothing.`,
-      `Nothing but excuses.`,
-      `You’ve got nothing on me.`,
-      `Nothing but the truth.`,
-      `Leave nothing out.`,
-      `Nothing ever goes as planned.`,
-      `Nothing good happens after 2AM.`,
-      `Nothing but trouble.`,
-      `Nothing short of a disaster.`,
-      `There’s nothing between us.`,
-      `Is nothing sacred?`,
-      `Nothing but smoke and mirrors.`,
-      `Nothing but empty promises.`,
-      `This counts for nothing.`,
-      `You can’t expect something for nothing.`,
-      `Nothing is free.`,
-      `Nothing lasts forever.`,
-      `It’s nothing personal.`,
-      `I’ve got nothing in the tank.`,
-      `Nothing but skin and bones.`,
-      `Nothing but the shirt on my back.`,
-      `Nothing to show for it.`,
-      `You are good for nothing.`,
-      `This was all for nothing.`,
-      `It all amounts to nothing.`,
-      `It’s worth nothing.`,
-      `I’ve got nothing.`,
-      `You are nothing.`,
-      `Thanks for nothing.`,
-      // Promos
-      { text: 'AiOP 2025 NOTHING', href: 'https://nothing.artinoddplaces.org/' },
-      { text: 'October 18-19' },
-      { text: 'DAVIDDARTS.COM', href: 'https://daviddarts.com' },
-    ];
-
-    const el = document.getElementById('line');
-
-    /* ---------------- Timings ---------------- */
-    const css = getComputedStyle(document.documentElement);
-    const fadeInMs  = parseInt(css.getPropertyValue('--fade-in-ms'))  || 2600;
-    const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 1800;
-    const gap       = parseInt(css.getPropertyValue('--gap-ms'))      || 0;
-    const peakOpacity = Math.min(1, Math.max(0, parseFloat(css.getPropertyValue('--peak-opacity')) || 0.88));
-
-    const firstHoldMs  = parseInt(css.getPropertyValue('--first-hold-ms'))  || 700;
-    const thanksHoldMs = parseInt(css.getPropertyValue('--thanks-hold-ms')) || 900;
-
-    const middleFadeOutMult = parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.85;
-    const nothingFadeMultFirstLast = parseFloat(css.getPropertyValue('--nothing-fade-mult-first-last')) || 1.8;
-
-    // promos (shorter)
-    const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 1200;
-    const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 200;
-    const promoFadeOutMult =
-      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.7;
-
-    // end-of-cycle white hold
-    const endWhiteHoldMs = parseInt(css.getPropertyValue('--end-white-hold-ms')) || 3000;
-
-    /* ---------------- Tokenization ---------------- */
-    const NOTHING_SPLIT = /(nothing)s?/gi;
-    const NOTHING_TEST  = /nothing/i;
-
-    const isObj = (item) => typeof item === 'object' && item !== null;
-    const isLinkItem = (item) => isObj(item) && 'href' in item;
-
-    function renderItemToHTML(item) {
-      if (isLinkItem(item)) {
-        return `<a href="${item.href}" target="_blank" rel="noopener noreferrer">${item.text}</a>`;
-      }
-      const text = isObj(item) ? item.text : String(item);
-      const parts = text.split(NOTHING_SPLIT);
-      let html = '';
-      for (let idx = 0; idx < parts.length; idx++) {
-        const part = parts[idx];
-        if (!part) continue;
-        if (/^nothing$/i.test(part)) {
-          html += `<span class="token nothing">${part}</span>`;
-        } else if (/^nothings$/i.test(part)) {
-          html += `<span class="token nothing">nothing</span><span class="token rest">s</span>`;
-        } else {
-          html += `<span class="token rest">${part}</span>`;
-        }
-      }
-      return html;
-    }
-
-    function lineHasNothing(item) {
-      if (isLinkItem(item)) return false;
-      const text = isObj(item) ? item.text : String(item);
-      return NOTHING_TEST.test(text);
-    }
-
-    /* ---------------- Helpers ---------------- */
-    function animateOnce(el, keyframes, options) {
-      const anim = el.animate(keyframes, options);
-      return new Promise(resolve => anim.addEventListener('finish', resolve, { once: true }));
-    }
-
-    let i = 0;
-    let autoplay = true;
-    let timers = new Set();
-    let resumeTimer = null;
-    let cycling = false;
-    let resumeAdvanceNext = false;
-
-    function schedule(fn, ms) {
-      const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
-      timers.add(id);
-      return id;
-    }
-    function clearTimers() { timers.forEach(id => clearTimeout(id)); timers.clear(); }
-    function cancelAllAnimations() {
-      try { (document.getAnimations?.() || []).forEach(a => a.cancel()); } catch {}
-    }
-
-    function pauseAndScheduleResume({ advanceOnResume = true } = {}) {
-      autoplay = false;
-      resumeAdvanceNext = advanceOnResume;
-      if (resumeTimer) clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(() => {
-        autoplay = true;
-        if (resumeAdvanceNext) { i = (i + 1) % items.length; resumeAdvanceNext = false; }
-        cycle(true);
-      }, 4000);
-    }
-
-    function holdForItem(idx, item) {
-      if (isLinkItem(item)) return promoLinkHold;
-      if (isObj(item) && item.text === 'October 18-19') return octoberHold;
-      if (idx === 0) return firstHoldMs;                            // first line small hold
-      if (typeof item === 'string' && item === 'Thanks for nothing.') return thanksHoldMs; // last line small hold
-      return 0; // middle lines
-    }
-
-    function fadeOutDuration(idx, item, isMiddlePoemLine) {
-      if (isLinkItem(item) || (isObj(item) && item.text === 'October 18-19')) {
-        return Math.round(fadeOutMs * promoFadeOutMult);
-      }
-      if (isMiddlePoemLine) return Math.round(fadeOutMs * middleFadeOutMult);
-      return fadeOutMs; // first/last and any other non-promo
-    }
-
-    /* ---------------- Core show/cycle ---------------- */
-    async function showIndex(idx, { skipHoldForMiddle = false } = {}) {
-      const item = items[idx];
-      const isFirst  = idx === 0;
-      const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
-      const isLink   = isLinkItem(item);
-      const isOctober = isObj(item) && item.text === 'October 18-19';
-      const isDAVID = isObj(item) && item.text === 'DAVIDDARTS.COM';
-      const isMiddlePoemLine = !isFirst && !isThanks && !isLink && !isOctober;
-
-      const holdMs = holdForItem(idx, item);
-      const fadeOutThis = fadeOutDuration(idx, item, isMiddlePoemLine);
-
-      // Render
-      el.innerHTML = renderItemToHTML(item);
-
-      // Fade in (0 → peakOpacity)
-      el.style.opacity = '0';
-      await Promise.resolve();
-      await animateOnce(el, [{ opacity: 0 }, { opacity: peakOpacity }], {
-        duration: fadeInMs,
-        easing: 'cubic-bezier(0.2, 0, 0, 1)',
-        fill: 'forwards'
-      });
-
-      // Brief hold only for first/last/promos (if configured)
-      if (holdMs > 0 && !(skipHoldForMiddle && isMiddlePoemLine)) {
-        await new Promise(resolve => { schedule(resolve, holdMs); });
-      }
-
-      // Fade out
-      if (isFirst || isThanks) {
-        // “rest” fades at base; “nothing” fades slower (no hard pause)
-        const rest = el.querySelectorAll('.rest');
-        const nothing = el.querySelectorAll('.nothing');
-
-        rest.forEach(t => {
-          t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'ease-in-out';
-          t.style.transitionDuration = `${fadeOutThis}ms`;
-          t.style.opacity = '0';
-        });
-        const nothingDur = Math.round(fadeOutThis * nothingFadeMultFirstLast);
-        nothing.forEach(t => {
-          t.style.transitionProperty = 'opacity';
-          t.style.transitionTimingFunction = 'ease-in-out';
-          t.style.transitionDuration = `${nothingDur}ms`;
-          t.style.opacity = '0';
-        });
-
-        await new Promise(resolve => { schedule(resolve, nothingDur + gap); });
-        el.style.opacity = '0';
-      } else {
-        // Middle/promo: fade the whole container from peak to 0
-        await animateOnce(el, [{ opacity: peakOpacity }, { opacity: 0 }], {
-          duration: fadeOutThis,
-          easing: 'ease-in-out',
-          fill: 'forwards'
-        });
-
-        // If this was the last item (DAVIDDARTS.COM), hold on white before restarting
-        if (isDAVID) {
-          await new Promise(resolve => { schedule(resolve, endWhiteHoldMs); });
-        } else if (gap > 0) {
-          await new Promise(resolve => { schedule(resolve, gap); });
-        }
-      }
-    }
-
-    async function cycle(forceStart = false) {
-      if (!forceStart && (!autoplay || cycling)) return;
-      cycling = true;
-      while (autoplay) {
-        clearTimers(); // safety between lines
-        await showIndex(i);
-        i = (i + 1) % items.length; // immediately proceed (no blank gap)
-      }
-      cycling = false;
-    }
-
-    /* ---------------- Manual navigation ---------------- */
-    function jumpBy(step) {
-      pauseAndScheduleResume({ advanceOnResume: true });
-      clearTimers();
-      cancelAllAnimations();
-
-      i = (i + step + items.length) % items.length;
-      el.style.opacity = '0';
-      showIndex(i, { skipHoldForMiddle: true });
-    }
-
-    // Swipe/click (horizontal), plus left/right click zones
-    let tracking = null;
-    const AXIS_LOCK_RATIO = 1.2;
-    const MIN_VELOCITY = 0.35; // px/ms
-    const SWIPE_PX = 35;
-
-    function now() { return performance.now(); }
-    function beginTrack(e) {
-      if (tracking) return;
-      tracking = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, startT: now() };
-    }
-    function moveTrack(e) {
-      if (!tracking || e.pointerId !== tracking.id) return;
-      tracking.lastX = e.clientX; tracking.lastY = e.clientY;
-    }
-    function endTrack(e) {
-      if (!tracking || e.pointerId !== tracking.id) return;
-      const dt = Math.max(1, now() - tracking.startT);
-      const dx = tracking.lastX - tracking.startX, dy = tracking.lastY - tracking.startY;
-      const ax = Math.abs(dx), ay = Math.abs(dy);
-      const vx = ax / dt;
-      const isHorizontal = ax > ay * AXIS_LOCK_RATIO;
-      const passed = ax > SWIPE_PX || vx > MIN_VELOCITY;
-      const link = e.target.closest && e.target.closest('a');
-      tracking = null;
-      if (link) return;
-      if (isHorizontal && passed) jumpBy(dx < 0 ? +1 : -1);
-    }
-
-    function onClick(e) {
-      const link = e.target.closest && e.target.closest('a');
-      if (link) return;
-
-      const mid = window.innerWidth / 2;
-      const dir = (e.clientX >= mid) ? +1 : -1; // right = forward, left = backward
-      jumpBy(dir);
-    }
-
-    function onKey(e) { if (e.key === 'ArrowRight') jumpBy(+1); else if (e.key === 'ArrowLeft') jumpBy(-1); }
-
-    // Older iOS: belt-and-suspenders scroll block
-    document.addEventListener('touchmove', (e) => {
-      const onLink = e.target.closest && e.target.closest('a');
-      if (!onLink) e.preventDefault();
-    }, { passive: false });
-
-    /* ---------------- Kickoff ---------------- */
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      el.textContent = typeof items[0] === 'string' ? items[0] : items[0].text;
-      el.style.opacity = '1';
-    } else {
-      cycle(true);
-      document.addEventListener('pointerdown', beginTrack, { passive: true });
-      document.addEventListener('pointermove',  moveTrack,  { passive: true });
-      document.addEventListener('pointerup',    endTrack,   { passive: true });
-      document.addEventListener('pointercancel', () => { tracking = null; }, { passive: true });
-      document.addEventListener('click', onClick);
-      document.addEventListener('keydown', onKey);
-    }
-
-    // Favicon
-    (function setFavicon() {
-      const svg =
-        `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-           <rect x="8" y="8" width="48" height="48" fill="#fff" stroke="#000" stroke-width="4" rx="6" ry="6"/>
-         </svg>`;
-      const href = "data:image/svg+xml," + encodeURIComponent(svg) + "#v=" + Date.now();
-      document.querySelectorAll('link[rel="icon"]').forEach(n => n.remove());
-      const link = document.createElement('link');
-      link.rel = 'icon';
-      link.type = 'image/svg+xml';
-      link.href = href;
-      document.head.appendChild(link);
-    })();
-  </script>
-</body>
-</html>
+      `Double or nothing?`,
+      `All or nothi
