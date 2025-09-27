@@ -11,26 +11,32 @@
 
   <style>
     :root {
-      --fade-in-ms: 2600;
-      --fade-out-ms: 1800;
-      --gap-ms: 0;
-      --peak-opacity: 0.88;
+      /* Slow, soft breathing (ms) */
+      --fade-in-ms: 2600;                 /* white → gray → dark gray */
+      --fade-out-ms: 1800;                /* dark gray → gray → white */
+      --gap-ms: 0;                        /* no blank gap between lines */
+      --peak-opacity: 0.88;               /* < 1.0 = dark gray peak */
 
-      /* Stanza breath on white */
-      --stanza-gap-ms: 900;
+      /* Stanza behavior */
+      --stanza-tail-mult: 1.8;            /* “nothing” lingers longer at stanza end */
+      --stanza-gap-ms: 0;                 /* we skip explicit white gaps at BREAK */
 
-      --first-hold-ms: 700;
-      --thanks-hold-ms: 900;
+      /* Holds */
+      --first-hold-ms: 700;               /* first line tiny hold */
+      --thanks-hold-ms: 900;              /* last line tiny hold */
 
-      --nothing-fade-mult-first-last: 1.8;
+      /* Middles: slightly quicker exit feel */
       --middle-fade-out-mult: 0.85;
 
-      --promo-link-hold-ms: 1200;
-      --october-hold-ms: 200;
+      /* Promos (end cards) — shorter per your request */
+      --promo-link-hold-ms: 1200;         /* brief linger for links */
+      --october-hold-ms: 200;             /* extra short October 18–19 */
       --promo-fade-out-mult: 0.7;
 
-      --end-white-hold-ms: 3000;
+      /* End-of-cycle white hold */
+      --end-white-hold-ms: 3000;          /* fade to white and hold, then restart */
 
+      /* link styling */
       --link-color: #6b7280;
       --link-hover: #111827;
     }
@@ -91,7 +97,7 @@
 
   <script>
     /* ---------------- Content ---------------- */
-    const BREAK = "__BREAK__"; // stanza separator → white hold
+    const BREAK = "__BREAK__"; // stanza separator
 
     const items = [
       // Stanza 1
@@ -203,22 +209,28 @@
     const fadeOutMs = parseInt(css.getPropertyValue('--fade-out-ms')) || 1800;
     const gap       = parseInt(css.getPropertyValue('--gap-ms'))      || 0;
     const peakOpacity = Math.min(1, Math.max(0, parseFloat(css.getPropertyValue('--peak-opacity')) || 0.88));
-    const stanzaGapMs = parseInt(css.getPropertyValue('--stanza-gap-ms')) || 900;
+
+    const stanzaTailMult = parseFloat(css.getPropertyValue('--stanza-tail-mult')) || 1.8;
+    const stanzaGapMs = parseInt(css.getPropertyValue('--stanza-gap-ms')) || 0;
 
     const firstHoldMs  = parseInt(css.getPropertyValue('--first-hold-ms'))  || 700;
     const thanksHoldMs = parseInt(css.getPropertyValue('--thanks-hold-ms')) || 900;
 
     const middleFadeOutMult = parseFloat(css.getPropertyValue('--middle-fade-out-mult')) || 0.85;
-    const nothingFadeMultFirstLast = parseFloat(css.getPropertyValue('--nothing-fade-mult-first-last')) || 1.8;
+    const nothingFadeMultFirstLast = 1.8;
 
+    // promos
     const promoLinkHold = parseInt(css.getPropertyValue('--promo-link-hold-ms')) || 1200;
     const octoberHold   = parseInt(css.getPropertyValue('--october-hold-ms'))    || 200;
-    const promoFadeOutMult = parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.7;
+    const promoFadeOutMult =
+      parseFloat(css.getPropertyValue('--promo-fade-out-mult')) || 0.7;
 
+    // end-of-cycle white hold
     const endWhiteHoldMs = parseInt(css.getPropertyValue('--end-white-hold-ms')) || 3000;
 
     /* ---------------- Tokenization ---------------- */
     const NOTHING_SPLIT = /(nothing)s?/gi;
+    const NOTHING_TEST  = /nothing/i;
 
     const isObj = (item) => typeof item === 'object' && item !== null;
     const isLinkItem = (item) => isObj(item) && 'href' in item;
@@ -245,10 +257,15 @@
       return html;
     }
 
+    function lineHasNothing(item) {
+      if (isLinkItem(item) || isBreak(item)) return false;
+      const text = isObj(item) ? item.text : String(item);
+      return NOTHING_TEST.test(text);
+    }
+
     /* ---------------- Helpers ---------------- */
     function animateOnce(el, keyframes, options) {
       if (!el.animate) {
-        // Fallback if WAAPI is unavailable
         Object.assign(el.style, { opacity: keyframes[keyframes.length - 1].opacity });
         return Promise.resolve();
       }
@@ -262,6 +279,7 @@
     let resumeTimer = null;
     let cycling = false;
     let resumeAdvanceNext = false;
+    let skipNextBreak = false; // when true, we advance past a BREAK after this line
 
     function schedule(fn, ms) {
       const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
@@ -304,13 +322,18 @@
     async function showIndex(idx, { skipHoldForMiddle = false } = {}) {
       const item = items[idx];
 
-      // Stanza break: white pause, show nothing
+      // Skip explicit white pause at BREAK (stanza rhythm is handled by the tail effect)
       if (isBreak(item)) {
         el.innerHTML = '';
         el.style.opacity = '0';
-        await new Promise(resolve => { schedule(resolve, stanzaGapMs); });
+        if (stanzaGapMs > 0) {
+          await new Promise(resolve => { schedule(resolve, stanzaGapMs); });
+        }
         return;
       }
+
+      const nextItem = items[(idx + 1) % items.length];
+      const nextIsBreak = isBreak(nextItem);
 
       const isFirst  = idx === 0;
       const isThanks = (typeof item === 'string' && item === 'Thanks for nothing.');
@@ -339,8 +362,9 @@
         await new Promise(resolve => { schedule(resolve, holdMs); });
       }
 
-      // Fade out
+      // Fade out behavior
       if (isFirst || isThanks) {
+        // first/last: rest fades, “nothing” lingers longer
         const rest = el.querySelectorAll('.rest');
         const nothing = el.querySelectorAll('.nothing');
 
@@ -360,7 +384,35 @@
 
         await new Promise(resolve => { schedule(resolve, nothingDur + gap); });
         el.style.opacity = '0';
+      } else if (nextIsBreak && lineHasNothing(item)) {
+        // stanza tail: fade REST first, keep ONLY “nothing,” then let “nothing” fade
+        const rest = el.querySelectorAll('.rest');
+        const nothing = el.querySelectorAll('.nothing');
+
+        // Stage 1: rest fades out
+        rest.forEach(t => {
+          t.style.transitionProperty = 'opacity';
+          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionDuration = `${fadeOutThis}ms`;
+          t.style.opacity = '0';
+        });
+
+        // Stage 2: “nothing” lingers then fades longer
+        const nothingDur = Math.round(fadeOutThis * stanzaTailMult);
+        nothing.forEach(t => {
+          t.style.transitionProperty = 'opacity';
+          t.style.transitionTimingFunction = 'ease-in-out';
+          t.style.transitionDuration = `${nothingDur}ms`;
+          t.style.opacity = '0';
+        });
+
+        await new Promise(resolve => { schedule(resolve, nothingDur + gap); });
+        el.style.opacity = '0';
+
+        // Tell the cycler to skip the BREAK item that follows
+        skipNextBreak = true;
       } else {
+        // Middle or promo: fade container
         await animateOnce(el, [{ opacity: peakOpacity }, { opacity: 0 }], {
           duration: fadeOutThis,
           easing: 'ease-in-out',
@@ -382,6 +434,12 @@
         clearTimers();
         await showIndex(i);
         i = (i + 1) % items.length;
+
+        // Skip the BREAK immediately after a stanza tail effect
+        if (skipNextBreak && isBreak(items[i])) {
+          i = (i + 1) % items.length;
+        }
+        skipNextBreak = false;
       }
       cycling = false;
     }
@@ -442,8 +500,7 @@
     }, { passive: false });
 
     /* ---------------- Kickoff ---------------- */
-    const prefersReduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduce) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const first = items.find(it => !isBreak(it));
       el.textContent = typeof first === 'string' ? first : first.text;
       el.style.opacity = '1';
